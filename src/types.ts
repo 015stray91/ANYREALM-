@@ -53,9 +53,56 @@ export interface PredefinedSimulation {
   steps: SimulationStep[];
 }
 
+export interface DeviceMetadata {
+  model: string;
+  codename: string;
+  arch: string;
+  activeSlot: string;
+  partitions: string;
+  sdkVersion: string;
+}
+
+export interface ModuleVectorConfig {
+  vector: {
+    injectZygisk: boolean;
+    preloadVictor: boolean;
+    scopeIds: string[];
+  };
+  kernelsu: {
+    variant: 'official' | 'next' | 'gki' | 'ultra';
+    namespaceRules: string;
+  };
+  shizuku: {
+    preCompileEngine: boolean;
+    elevateRish: boolean;
+  };
+  sui: {
+    injectCoreHooks: boolean;
+    hideManager: boolean;
+  };
+  avb: {
+    algorithm: string;
+    partitionSize: number;
+    keyFilename: string | null;
+  };
+}
+
 export interface GeneratedFile {
   filename: string;
   path: string;
   language: string;
   content: string;
+}
+
+export interface FirmwareBlob {
+  name: string;
+  type: 'Bootloader' | 'Security' | 'Radio' | 'GPT';
+  sizeBytes: number;
+  path: string;
+}
+
+export interface PartitionMap {
+  name: string;
+  startSector: number;
+  sizeBytes: number;
 }

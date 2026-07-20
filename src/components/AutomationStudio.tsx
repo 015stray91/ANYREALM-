@@ -94,7 +94,7 @@ export default function AutomationStudio({ workspaceFiles }: AutomationStudioPro
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [pipelineProgress, setPipelineProgress] = useState<number>(0);
   const [pipelineLogs, setPipelineLogs] = useState<string[]>([]);
-  const [activeWorkflowTab, setActiveWorkflowTab] = useState<'github' | 'local_agent_config' | 'power_config' | 'readme'>('github');
+  const [activeWorkflowTab, setActiveWorkflowTab] = useState<'github' | 'local_agent_config' | 'power_config' | 'readme' | 'crypto'>('github');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [powerFormat, setPowerFormat] = useState<'YML' | 'YAML'>('YML');
 
@@ -698,6 +698,16 @@ hooks:
             >
               Automated Setup Readme
             </button>
+            <button
+              onClick={() => setActiveWorkflowTab('crypto')}
+              className={`px-3 py-1.5 rounded-md text-[10.5px] font-mono whitespace-nowrap cursor-pointer transition-all ${
+                activeWorkflowTab === 'crypto'
+                  ? 'bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              AVB Cryptographic Center
+            </button>
           </div>
         </div>
 
@@ -711,7 +721,9 @@ hooks:
                   ? 'agent_daemon_config.yml' 
                   : activeWorkflowTab === 'power_config'
                     ? `power_profile.${powerFormat.toLowerCase()}`
-                    : 'AUTOMATED_BUILD_GUIDE.md'
+                    : activeWorkflowTab === 'crypto'
+                      ? 'avb_cryptographic_center.md'
+                      : 'AUTOMATED_BUILD_GUIDE.md'
             }</span>
             
             <button
@@ -722,7 +734,9 @@ hooks:
                     ? localAgentConfigYaml 
                     : activeWorkflowTab === 'power_config'
                       ? powerProfileYaml
-                      : `# AOSP Automated OS Builder Guide\n\n1. Install build agent.\n2. Configure keys.\n3. Run ./fuse_rootfs.sh`
+                      : activeWorkflowTab === 'crypto'
+                        ? '# AVB Cryptographic Center\n\n1. Generate RSA key: `openssl genrsa -out custom_key.pem 2048`\n2. Integrate into Any Realm.'
+                        : `# AOSP Automated OS Builder Guide\n\n1. Install build agent.\n2. Configure keys.\n3. Run ./fuse_rootfs.sh`
               )}
               className="px-2.5 py-1 bg-slate-950 hover:bg-slate-900 border border-slate-900 hover:border-slate-850 text-slate-400 hover:text-white rounded transition-colors flex items-center gap-1 cursor-pointer"
             >

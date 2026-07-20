@@ -24,9 +24,11 @@ import {
   HardDrive,
   FileArchive,
   Users,
-  Wrench
+  Wrench,
+  Settings
 } from 'lucide-react';
 import AospArchitect from './components/AospArchitect';
+import ModuleVectorSettingsPanel from './components/ModuleVectorSettingsPanel';
 import RootfsFuser from './components/RootfsFuser';
 import AospCodeStudio from './components/AospCodeStudio';
 import DeveloperConsole from './components/DeveloperConsole';
@@ -37,10 +39,27 @@ import IsoDissectorStudio from './components/IsoDissectorStudio';
 import FirmwareDecomposer from './components/FirmwareDecomposer';
 import PeoplesImporter from './components/PeoplesImporter';
 import AndroidImageKitchen from './components/AndroidImageKitchen';
-import { AospComponent, GeneratedFile } from './types';
+import { DeviceMetadata, AospComponent, GeneratedFile } from './types';
+
+// ... (existing imports)
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik'>('architect');
+  const [deviceMetadata, setDeviceMetadata] = useState<DeviceMetadata | null>(null);
+
+  const discoverDevice = async () => {
+    // Simulate WebADB/Fastboot interaction
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setDeviceMetadata({
+      model: 'Moto G Stylus 5G',
+      codename: 'genevn',
+      arch: 'GKI 2.0 (Android 13 / Kernel 5.15)',
+      activeSlot: 'B',
+      partitions: 'system.erofs (2.4GB), vendor.img (1.1GB), boot.img (LZ4 Ramdisk)',
+      sdkVersion: '33'
+    });
+  };
+
+  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector'>('architect');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [isRefactoringCode, setIsRefactoringCode] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
@@ -328,6 +347,19 @@ export default function App() {
               <Wrench className="w-3.5 h-3.5" />
               Android Image Kitchen (AIK)
             </button>
+
+            <button
+              onClick={() => setActiveTab('module_vector')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'module_vector' 
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md' 
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-module-vector-settings"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Module Vector Settings
+            </button>
           </div>
 
           <button
@@ -365,8 +397,12 @@ export default function App() {
               selectedComponent={selectedComponent}
               components={components}
               setComponents={setComponents}
+              generatedFiles={generatedFiles}
+              setGeneratedFiles={setGeneratedFiles}
               onGenerateCode={handleGenerateCode}
               isGenerating={isGeneratingCode}
+              deviceMetadata={deviceMetadata}
+              discoverDevice={discoverDevice}
             />
           )}
 
@@ -409,6 +445,10 @@ export default function App() {
 
           {activeTab === 'aik' && (
             <AndroidImageKitchen />
+          )}
+
+          {activeTab === 'module_vector' && (
+            <ModuleVectorSettingsPanel deviceMetadata={deviceMetadata} />
           )}
         </div>
       </main>

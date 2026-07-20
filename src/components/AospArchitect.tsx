@@ -4,6 +4,19 @@
  */
 
 import React, { useState } from 'react';
+import BlueprintVisualizer from './BlueprintVisualizer';
+import BootSequenceAnalyzer from './BootSequenceAnalyzer';
+import DebosBuilder from './DebosBuilder';
+import GkiVersionManager from './GkiVersionManager';
+import SystemIntegrationManager from './SystemIntegrationManager';
+import SystemManagersInfo from './SystemManagersInfo';
+import LorryModuleApiManager from './LorryModuleApiManager';
+import FirmwareInfrastructureAnalyzer from './FirmwareInfrastructureAnalyzer';
+import NetHunterSystemIntegrator from './NetHunterSystemIntegrator';
+import HardwareReconnaissance from './HardwareReconnaissance';
+import LpmakeConfigGenerator from './LpmakeConfigGenerator';
+import VerificationCockpit from './VerificationCockpit';
+import RetailCarrierMitigationEngine from './RetailCarrierMitigationEngine';
 import { 
   Cpu, 
   Layers, 
@@ -22,17 +35,24 @@ import {
   Zap, 
   Layers3,
   HelpCircle,
-  FolderTree
+  FolderTree,
+  Network,
+  History
 } from 'lucide-react';
-import { AospLayer, AospComponent, AospLayerType, AidlMethod, GeneratedFile } from '../types';
+import * as yaml from 'js-yaml';
+import { DeviceMetadata, AospLayer, AospComponent, AospLayerType, AidlMethod, GeneratedFile, FirmwareBlob, PartitionMap } from '../types';
 
 interface AospArchitectProps {
   onSelectComponent: (component: AospComponent) => void;
   selectedComponent: AospComponent | null;
   components: AospComponent[];
   setComponents: React.Dispatch<React.SetStateAction<AospComponent[]>>;
+  generatedFiles: GeneratedFile[];
+  setGeneratedFiles: React.Dispatch<React.SetStateAction<GeneratedFile[]>>;
   onGenerateCode: (component: AospComponent) => void;
   isGenerating: boolean;
+  deviceMetadata: DeviceMetadata | null;
+  discoverDevice: () => Promise<void>;
 }
 
 export default function AospArchitect({
@@ -40,15 +60,29 @@ export default function AospArchitect({
   selectedComponent,
   components,
   setComponents,
+  generatedFiles,
+  setGeneratedFiles,
   onGenerateCode,
-  isGenerating
+  isGenerating,
+  deviceMetadata,
+  discoverDevice
 }: AospArchitectProps) {
   const [activeLayer, setActiveLayer] = useState<AospLayerType>('Framework Services');
+  const [visualizerMode, setVisualizerMode] = useState<'node-map' | 'tree-map'>('node-map');
   const [newCompName, setNewCompName] = useState('');
   const [newCompDesc, setNewCompDesc] = useState('');
   const [newCompType, setNewCompType] = useState('System Service');
   const [newCompSelinux, setNewCompSelinux] = useState('system_server_service');
   const [newCompLayer, setNewCompLayer] = useState<AospLayerType>('Framework Services');
+  
+  const [blobs] = useState<FirmwareBlob[]>([
+    { name: 'xbl.mbn', type: 'Bootloader', sizeBytes: 1024 * 512, path: '/firmware/xbl.mbn' },
+    { name: 'tz.bin', type: 'Security', sizeBytes: 1024 * 256, path: '/firmware/tz.bin' },
+    { name: 'modem.mbn', type: 'Radio', sizeBytes: 1024 * 1024 * 10, path: '/firmware/modem.mbn' },
+  ]);
+  const [partitions] = useState<PartitionMap[]>([
+    { name: 'super', startSector: 0, sizeBytes: 1024 * 1024 * 1024 * 4 },
+  ]);
   
   // AIDL builders for new system service
   const [aidlMethods, setAidlMethods] = useState<AidlMethod[]>([
@@ -57,10 +91,21 @@ export default function AospArchitect({
   ]);
   const [newMethodName, setNewMethodName] = useState('');
   const [newMethodReturn, setNewMethodReturn] = useState('int');
+  const [history, setHistory] = useState<{ components: AospComponent[], generatedFiles: GeneratedFile[] }[]>([]);
+  const [gkiVersion, setGkiVersion] = useState<'legacy' | 'gki2.0'>('legacy');
 
   // Simulation controls
   const [simActive, setSimActive] = useState(false);
   const [simStep, setSimStep] = useState<number>(-1);
+
+  const snapshot = () => {
+    setHistory(prev => [{ components, generatedFiles }, ...prev].slice(0, 5));
+  };
+
+  const restore = (snapshotData: { components: AospComponent[], generatedFiles: GeneratedFile[] }) => {
+    setComponents(snapshotData.components);
+    setGeneratedFiles(snapshotData.generatedFiles);
+  };
 
   const layers: AospLayer[] = [
     { id: 'Apps', name: 'Application Layer', description: 'System Apps and Settings UI utilizing high-level Android SDK managers.', color: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400', textColor: 'text-emerald-400' },
@@ -231,90 +276,119 @@ export default function AospArchitect({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Cpu className="text-blue-500 w-5 h-5" /> Layer Node Map: {activeLayer}
+                <Cpu className="text-blue-500 w-5 h-5" /> Workspace Blueprint
               </h3>
-              <p className="text-xs text-slate-400">Click on components to inspect their AOSP implementations or edit their IPC architectures.</p>
+              <p className="text-xs text-slate-400">
+                {visualizerMode === 'node-map' 
+                  ? `Layer Node Map: ${activeLayer}` 
+                  : 'Interactive Architecture Tree Map'}
+              </p>
             </div>
             
-            <button
-              onClick={triggerSimulation}
-              disabled={simActive}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 disabled:opacity-50 transition-all cursor-pointer"
-              id="start-hardware-simulation"
-            >
-              <Play className="w-3.5 h-3.5 fill-emerald-400" />
-              {simActive ? "Simulating OS Flow..." : "Simulate HW-to-App Call"}
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-900">
+                <button
+                  type="button"
+                  onClick={() => setVisualizerMode('node-map')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold font-mono transition-all cursor-pointer ${
+                    visualizerMode === 'node-map'
+                      ? 'bg-blue-600 text-white shadow font-bold'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  Node Map
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisualizerMode('tree-map')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold font-mono transition-all cursor-pointer ${
+                    visualizerMode === 'tree-map'
+                      ? 'bg-blue-600 text-white shadow font-bold'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  Tree Map
+                </button>
+              </div>
+
+              <button
+                onClick={triggerSimulation}
+                disabled={simActive || visualizerMode === 'tree-map'}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                id="start-hardware-simulation"
+              >
+                <Play className="w-3.5 h-3.5 fill-emerald-400" />
+                {simActive ? "Simulating..." : "Simulate Call"}
+              </button>
+            </div>
           </div>
 
-          {/* Visualization nodes map */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-h-[180px]">
-            {components.filter(c => c.layer === activeLayer).map((comp) => (
-              <div
-                key={comp.id}
-                onClick={() => onSelectComponent(comp)}
-                className={`relative group p-4 rounded-xl border text-left cursor-pointer transition-all ${
-                  selectedComponent?.id === comp.id
-                    ? 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-blue-500 shadow-md shadow-blue-500/10'
-                    : 'bg-slate-950/60 border-[#1e293b] hover:border-slate-800'
-                }`}
-                id={`component-node-${comp.id}`}
-              >
-                {comp.isCustom && (
-                  <span className="absolute top-3 right-3 text-[10px] font-bold font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded">
-                    User Made
-                  </span>
-                )}
+          {visualizerMode === 'tree-map' ? (
+            <BlueprintVisualizer components={components} />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-h-[180px]">
+              {components.filter(c => c.layer === activeLayer).map((comp) => (
+                <div
+                  key={comp.id}
+                  onClick={() => onSelectComponent(comp)}
+                  className={`relative group p-4 rounded-xl border text-left cursor-pointer transition-all ${
+                    selectedComponent?.id === comp.id
+                      ? 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-blue-500 shadow-md shadow-blue-500/10'
+                      : 'bg-slate-950/60 border-[#1e293b] hover:border-slate-800'
+                  }`}
+                  id={`component-node-${comp.id}`}
+                >
+                  {comp.isCustom && (
+                    <span className="absolute top-3 right-3 text-[10px] font-bold font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded">
+                      User Made
+                    </span>
+                  )}
 
-                <div className="flex items-center gap-2">
-                  <span className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 group-hover:bg-slate-800 transition-colors">
-                    <FileCode className="w-4 h-4 text-blue-400" />
-                  </span>
-                  <div>
-                    <h4 className="font-bold text-white text-sm font-mono">{comp.name}</h4>
-                    <span className="text-[11px] font-mono text-slate-400 block mt-0.5">{comp.type}</span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-400 mt-2.5 leading-relaxed line-clamp-2">{comp.description}</p>
-                
-                {comp.aidlMethods && comp.aidlMethods.length > 0 && (
-                  <div className="mt-3 pt-2.5 border-t border-slate-900/40">
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1">AIDL Methods</span>
-                    <div className="flex flex-wrap gap-1">
-                      {comp.aidlMethods.map((m, idx) => (
-                        <span key={idx} className="text-[10px] font-mono bg-slate-900/80 text-slate-300 px-1.5 py-0.5 rounded border border-slate-800">
-                          {m.name}()
-                        </span>
-                      ))}
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 group-hover:bg-slate-800 transition-colors">
+                      <FileCode className="w-4 h-4 text-blue-400" />
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-white text-sm font-mono">{comp.name}</h4>
+                      <span className="text-[11px] font-mono text-slate-400 block mt-0.5">{comp.type}</span>
                     </div>
                   </div>
-                )}
 
-                <div className="mt-3 flex items-center justify-between text-[11px] font-mono border-t border-slate-900/40 pt-2 text-slate-500">
-                  <span className="truncate max-w-[150px]">SELinux: {comp.selinuxContext}</span>
-                  {comp.isCustom && (
-                    <button
-                      onClick={(e) => deleteComponent(comp.id, e)}
-                      className="text-rose-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 cursor-pointer transition-colors"
-                      title="Delete Component"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  <p className="text-xs text-slate-400 mt-2.5 leading-relaxed line-clamp-2">{comp.description}</p>
+                  
+                  {comp.aidlMethods && comp.aidlMethods.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-900/40">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1">AIDL Methods</span>
+                      <div className="flex flex-wrap gap-1">
+                        {comp.aidlMethods.map((m, idx) => (
+                          <span key={idx} className="text-[10px] font-mono bg-slate-900/80 text-slate-300 px-1.5 py-0.5 rounded border border-slate-800">
+                            {m.name}()
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                </div>
-              </div>
-            ))}
 
-            {components.filter(c => c.layer === activeLayer).length === 0 && (
-              <div className="col-span-2 flex flex-col items-center justify-center text-center p-6 bg-slate-950/40 border border-[#1e293b] border-dashed rounded-xl">
-                <HelpCircle className="w-10 h-10 text-slate-700 mb-2" />
-                <h4 className="text-slate-400 font-semibold text-sm">No Custom Components in {activeLayer}</h4>
-                <p className="text-xs text-slate-500 max-w-xs mt-1">Use the right side creator panel to bootstrap a component inside this layer!</p>
-              </div>
-            )}
-          </div>
+                  <div className="mt-3 flex items-center justify-between text-[11px] font-mono border-t border-slate-900/40 pt-2 text-slate-500">
+                    <span className="truncate max-w-[150px]">SELinux: {comp.selinuxContext}</span>
+                    {comp.isCustom && (
+                      <button
+                        onClick={(e) => deleteComponent(comp.id, e)}
+                        className="text-rose-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 cursor-pointer transition-colors"
+                        title="Delete Component"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+        
+        {/* Firmware Infrastructure Analyzer */}
+        <FirmwareInfrastructureAnalyzer blobs={blobs} partitions={partitions} />
 
         {/* Live Simulation Visual Log */}
         {simActive && (
@@ -500,6 +574,18 @@ export default function AospArchitect({
           </form>
         </div>
 
+        <BootSequenceAnalyzer />
+        <DebosBuilder />
+        <GkiVersionManager gkiVersion={gkiVersion} setGkiVersion={setGkiVersion} />
+        <SystemIntegrationManager />
+        <SystemManagersInfo />
+        <LorryModuleApiManager />
+        <NetHunterSystemIntegrator />
+        <HardwareReconnaissance deviceMetadata={deviceMetadata} discoverDevice={discoverDevice} />
+        <LpmakeConfigGenerator deviceMetadata={deviceMetadata} />
+        <VerificationCockpit deviceMetadata={deviceMetadata} />
+        <RetailCarrierMitigationEngine addLog={(m) => console.log(m)} />
+        
         {/* Selected Component Information Panel */}
         {selectedComponent && (
           <div className="bg-[#111827] border border-blue-500/20 rounded-xl p-5 relative overflow-hidden" id="selected-component-details">

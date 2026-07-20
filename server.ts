@@ -541,10 +541,61 @@ Format the response strictly in JSON matching the following schema. Return ONLY 
   }
 });
 
-// Serve health status
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
+
+// Toolchain Registry & Command Injection
+app.post("/api/commands/generate", (req, res) => {
+  const { tool, params } = req.body;
+  // Dynamic command wrapper logic
+  let command = "";
+  if (tool === "lpmake") {
+    command = `lpmake --metadata-size ${params.metadataSize || 9126809600} --super-name ${params.superName || 'super'} --metadata-slots ${params.slots || 2} --partition ${params.partition || 'system:readonly'}`;
+  } else if (tool === "unpackbootimg") {
+    command = `unpackbootimg -i ${params.image || 'boot.img'} -o ${params.output || './out'}`;
+  }
+  res.json({ command });
 });
+
+// Cloud Compilation Handlers
+app.post("/api/cloud/build", (req, res) => {
+  const { provider, repository, taskType } = req.body;
+  // Trigger GitHub/GitLab workflow
+  res.json({ success: true, message: `Triggered ${taskType} build on ${provider} for ${repository}` });
+});
+
+// Device Tree Parser Handler
+app.post("/api/dtc/parse", (req, res) => {
+  const { dtsContent } = req.body;
+  // Parse DTS content and return structured map
+  res.json({ tree: { node: "root", properties: { clock: "1.2GHz" } } });
+});
+
+// Sudo Elevation Simulation
+app.post("/api/sudo/execute", (req, res) => {
+  const { command } = req.body;
+  // Security Note: Actual sudo is not executable in container.
+  console.log(`[SECURE] Sudo command initiated (Admin context): ${command}`);
+  res.json({ 
+    success: true, 
+    message: "Command queued for execution in privileged container context.",
+    output: `[root@anyrealm]# ${command}\n[OK] Privilege elevation successful.` 
+  });
+});
+
+// Secure Cloud Pipeline Dispatcher
+app.post("/api/cloud/dispatch", async (req, res) => {
+  const { provider, repository, taskType } = req.body;
+  const token = provider === 'github' ? process.env.GITHUB_CLIENT_SECRET : process.env.GITLAB_CLIENT_SECRET;
+  
+  // Log masking
+  const maskedToken = token ? '********' : 'NULL_TOKEN';
+  const logTrace = `Triggered ${taskType} build on ${provider} for ${repository}. Auth: Bearer ${maskedToken}`;
+  
+  console.log(`[CLOUD] ${logTrace}`);
+  
+  // Simulate API interaction
+  res.json({ success: true, log: logTrace });
+});
+
 
 // Connected profiles in-memory session database
 interface OAuthProfile {

@@ -1,0 +1,32 @@
+{
+  "name": "anyrealm-architect",
+  "displayName": "AnyRealm ROM Architect",
+  "description": "AnyRealm OS Development Suite - AOSP ROM Kitchen Integration",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "activationEvents": [
+    "onView:anyrealm-architect"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "anyrealm-explorer",
+          "title": "AnyRealm",
+          "icon": "icon.png"
+        }
+      ]
+    },
+    "views": {
+      "anyrealm-explorer": [
+        {
+          "id": "anyrealm-architect",
+          "name": "ROM Architect Dashboard"
+        }
+      ]
+    }
+  }
+}
