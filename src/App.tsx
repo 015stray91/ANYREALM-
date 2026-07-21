@@ -25,7 +25,8 @@ import {
   FileArchive,
   Users,
   Wrench,
-  Settings
+  Settings,
+  Boxes
 } from 'lucide-react';
 import AospArchitect from './components/AospArchitect';
 import ModuleVectorSettingsPanel from './components/ModuleVectorSettingsPanel';
@@ -39,6 +40,8 @@ import IsoDissectorStudio from './components/IsoDissectorStudio';
 import FirmwareDecomposer from './components/FirmwareDecomposer';
 import PeoplesImporter from './components/PeoplesImporter';
 import AndroidImageKitchen from './components/AndroidImageKitchen';
+import ExperimentalLaboratory from './components/ExperimentalLaboratory';
+import ToolchainExtensionHub from './components/ToolchainExtensionHub';
 import { DeviceMetadata, AospComponent, GeneratedFile } from './types';
 
 // ... (existing imports)
@@ -46,25 +49,6 @@ import { DeviceMetadata, AospComponent, GeneratedFile } from './types';
 export default function App() {
   const [deviceMetadata, setDeviceMetadata] = useState<DeviceMetadata | null>(null);
 
-  const discoverDevice = async () => {
-    // Simulate WebADB/Fastboot interaction
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setDeviceMetadata({
-      model: 'Moto G Stylus 5G',
-      codename: 'genevn',
-      arch: 'GKI 2.0 (Android 13 / Kernel 5.15)',
-      activeSlot: 'B',
-      partitions: 'system.erofs (2.4GB), vendor.img (1.1GB), boot.img (LZ4 Ramdisk)',
-      sdkVersion: '33'
-    });
-  };
-
-  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector'>('architect');
-  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
-  const [isRefactoringCode, setIsRefactoringCode] = useState(false);
-  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
-  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  
   // Initial pre-configured core components of our custom AOSP Board
   const [components, setComponents] = useState<AospComponent[]>([
     {
@@ -122,6 +106,132 @@ export default function App() {
     }
   ]);
 
+  const [partitions, setPartitions] = useState<any[]>([
+    {
+      name: 'system',
+      sizeMb: 1500,
+      filesystem: 'erofs',
+      erofsCompression: 'lz4hc',
+      readOnly: true,
+      description: 'Android Core Operating System OS binaries, frameworks, and JNI linkages fused with Linux glibc dependencies.'
+    },
+    {
+      name: 'vendor',
+      sizeMb: 600,
+      filesystem: 'erofs',
+      erofsCompression: 'lz4',
+      readOnly: true,
+      description: 'Device-specific HAL services, AIDL drivers, hardware modules, and proprietary blobs.'
+    },
+    {
+      name: 'product',
+      sizeMb: 500,
+      filesystem: 'erofs',
+      erofsCompression: 'none',
+      readOnly: true,
+      description: 'OEM system specifications, application layers, branding materials, and vendor overlay configs.'
+    },
+    {
+      name: 'system_ext',
+      sizeMb: 300,
+      filesystem: 'ext4',
+      erofsCompression: 'none',
+      readOnly: false,
+      description: 'Optional system extension packages and custom development toolchains.'
+    }
+  ]);
+  const [superCapacityMb, setSuperCapacityMb] = useState<number>(4096);
+  const [lastAutoSaved, setLastAutoSaved] = useState<string | null>(null);
+
+  const discoverDevice = async () => {
+    // Simulate WebADB/Fastboot interaction
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setDeviceMetadata({
+      model: 'Moto G Stylus 5G',
+      codename: 'genevn',
+      arch: 'GKI 2.0 (Android 13 / Kernel 5.15)',
+      activeSlot: 'B',
+      partitions: 'system.erofs (2.4GB), vendor.img (1.1GB), boot.img (LZ4 Ramdisk)',
+      sdkVersion: '33'
+    });
+  };
+
+  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector' | 'experimental' | 'toolchains'>('architect');
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [isRefactoringCode, setIsRefactoringCode] = useState(false);
+  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+
+  // Resume Workspace from LocalStorage if active
+  useEffect(() => {
+    const saved = localStorage.getItem('aosp_architect_workspace');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.deviceMetadata) setDeviceMetadata(parsed.deviceMetadata);
+        if (parsed.components) setComponents(parsed.components);
+        if (parsed.generatedFiles) setGeneratedFiles(parsed.generatedFiles);
+        if (parsed.partitions) setPartitions(parsed.partitions);
+        if (parsed.superCapacityMb) setSuperCapacityMb(parsed.superCapacityMb);
+        setLastAutoSaved(new Date().toLocaleTimeString());
+      } catch (err) {
+        console.error("Failed to restore session from LocalStorage:", err);
+      }
+    }
+  }, []);
+
+  // 10-minute Auto-save Heartbeat
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const stateToSave = {
+        deviceMetadata,
+        components,
+        generatedFiles,
+        partitions,
+        superCapacityMb
+      };
+      localStorage.setItem('aosp_architect_workspace', JSON.stringify(stateToSave));
+      const now = new Date().toLocaleTimeString();
+      setLastAutoSaved(now);
+    }, 600000); // 10 minutes
+
+    return () => clearInterval(interval);
+  }, [deviceMetadata, components, generatedFiles, partitions, superCapacityMb]);
+
+  const handleExportSession = () => {
+    const stateToExport = {
+      timestamp: new Date().toISOString(),
+      deviceMetadata,
+      components,
+      generatedFiles,
+      partitions,
+      superCapacityMb
+    };
+    const element = document.createElement("a");
+    const file = new Blob([JSON.stringify(stateToExport, null, 2)], { type: 'application/json' });
+    element.href = URL.createObjectURL(file);
+    element.download = `aosp_session_workspace_${new Date().toISOString().substring(0,10)}.json`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const handleImportSession = (fileContent: string) => {
+    try {
+      const parsed = JSON.parse(fileContent);
+      if (parsed.deviceMetadata) setDeviceMetadata(parsed.deviceMetadata);
+      if (parsed.components) setComponents(parsed.components);
+      if (parsed.generatedFiles) setGeneratedFiles(parsed.generatedFiles);
+      if (parsed.partitions) setPartitions(parsed.partitions);
+      if (parsed.superCapacityMb) setSuperCapacityMb(parsed.superCapacityMb);
+      setLastAutoSaved(new Date().toLocaleTimeString());
+      return true;
+    } catch (e) {
+      console.error("Import failure:", e);
+      return false;
+    }
+  };
+  
   const [selectedComponent, setSelectedComponent] = useState<AospComponent | null>(components[1]);
 
   // Handle generation of actual AOSP code via backend Gemini
@@ -208,7 +318,10 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight text-white flex items-center gap-2">
-              Any Realm <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-mono font-bold px-1.5 py-0.5 rounded">Any RealM v1.4</span>
+              Any Realm <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-mono font-bold px-1.5 py-0.5 rounded mr-2">Any RealM v1.4</span>
+              {lastAutoSaved && (
+                <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold px-1.5 py-0.5 rounded animate-pulse">Auto-saved {lastAutoSaved}</span>
+              )}
             </h1>
             <p className="text-xs text-slate-400">Design, code, and fuse custom system services, custom HAL drivers, and manage secure people imports.</p>
           </div>
@@ -217,7 +330,7 @@ export default function App() {
         {/* Actions & Tab Selection Wrap */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           {/* Tab selection */}
-          <div className="flex bg-[#0f172a] border border-[#1e293b] p-1 rounded-lg">
+          <div className="flex bg-[#0f172a] border border-[#1e293b] p-1 rounded-lg overflow-x-auto max-w-full scrollbar-none gap-1 whitespace-nowrap">
             <button
               onClick={() => setActiveTab('architect')}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
@@ -360,6 +473,32 @@ export default function App() {
               <Settings className="w-3.5 h-3.5" />
               Module Vector Settings
             </button>
+
+            <button
+              onClick={() => setActiveTab('experimental')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'experimental' 
+                  ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md' 
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-experimental-laboratory"
+            >
+              <GitMerge className="w-3.5 h-3.5" />
+              Experimental Laboratory
+            </button>
+
+            <button
+              onClick={() => setActiveTab('toolchains')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'toolchains' 
+                  ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-md' 
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-toolchain-extensions"
+            >
+              <Boxes className="w-3.5 h-3.5 text-indigo-400" />
+              Toolchains & Extensions
+            </button>
           </div>
 
           <button
@@ -420,7 +559,17 @@ export default function App() {
           )}
 
           {activeTab === 'super' && (
-            <SuperPartitionStudio />
+            <SuperPartitionStudio 
+              deviceMetadata={deviceMetadata}
+              partitions={partitions}
+              setPartitions={setPartitions}
+              superCapacityMb={superCapacityMb}
+              setSuperCapacityMb={setSuperCapacityMb}
+            />
+          )}
+
+          {activeTab === 'experimental' && (
+            <ExperimentalLaboratory />
           )}
 
           {activeTab === 'automation' && (
@@ -450,6 +599,10 @@ export default function App() {
           {activeTab === 'module_vector' && (
             <ModuleVectorSettingsPanel deviceMetadata={deviceMetadata} />
           )}
+
+          {activeTab === 'toolchains' && (
+            <ToolchainExtensionHub />
+          )}
         </div>
       </main>
 
@@ -458,6 +611,12 @@ export default function App() {
         isOpen={isConsoleOpen} 
         onClose={() => setIsConsoleOpen(false)} 
         activeFiles={generatedFiles} 
+        onExportSession={handleExportSession}
+        onImportSession={handleImportSession}
+        deviceMetadata={deviceMetadata}
+        components={components}
+        partitions={partitions}
+        superCapacityMb={superCapacityMb}
       />
 
       {/* Humble page footer with visual branding */}

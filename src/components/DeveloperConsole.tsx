@@ -23,7 +23,8 @@ import {
   ChevronRight,
   Shield,
   Layers,
-  Settings2
+  Settings2,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GeneratedFile } from '../types';
@@ -32,6 +33,12 @@ interface DeveloperConsoleProps {
   isOpen: boolean;
   onClose: () => void;
   activeFiles: GeneratedFile[];
+  onExportSession?: () => void;
+  onImportSession?: (fileContent: string) => boolean;
+  deviceMetadata?: any;
+  components?: any[];
+  partitions?: any[];
+  superCapacityMb?: number;
 }
 
 interface UserProfile {
@@ -42,7 +49,17 @@ interface UserProfile {
   isDemo: boolean;
 }
 
-export default function DeveloperConsole({ isOpen, onClose, activeFiles }: DeveloperConsoleProps) {
+export default function DeveloperConsole({ 
+  isOpen, 
+  onClose, 
+  activeFiles,
+  onExportSession,
+  onImportSession,
+  deviceMetadata,
+  components,
+  partitions,
+  superCapacityMb
+}: DeveloperConsoleProps) {
   const [profiles, setProfiles] = useState<{
     github: UserProfile | null;
     gitlab: UserProfile | null;
@@ -51,6 +68,15 @@ export default function DeveloperConsole({ isOpen, onClose, activeFiles }: Devel
     github: null,
     gitlab: null,
     google: null
+  });
+
+  const [envStatus, setEnvStatus] = useState<Record<string, boolean>>({
+    github_id_configured: false,
+    github_secret_configured: false,
+    gitlab_id_configured: false,
+    gitlab_secret_configured: false,
+    google_id_configured: false,
+    google_secret_configured: false,
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -70,6 +96,9 @@ export default function DeveloperConsole({ isOpen, onClose, activeFiles }: Devel
       if (res.ok) {
         const data = await res.json();
         setProfiles(data.profiles);
+        if (data.envStatus) {
+          setEnvStatus(data.envStatus);
+        }
       }
     } catch (e) {
       console.error('Failed to retrieve profiles:', e);
@@ -414,6 +443,62 @@ export default function DeveloperConsole({ isOpen, onClose, activeFiles }: Devel
                   </div>
                 </div>
 
+              </div>
+
+              {/* SECTION 1.5: Session Portability & Workspace Sync */}
+              <div className="p-4 bg-gradient-to-tr from-[#0a0f24] to-[#111c3a] border border-blue-500/10 rounded-xl space-y-4">
+                <div className="flex items-center justify-between border-b border-[#1e293b] pb-2">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <Database className="text-indigo-400 w-4 h-4" /> Session Workspace Portability
+                  </h4>
+                  <span className="text-[9px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold">
+                    JSON Spec v1.4
+                  </span>
+                </div>
+
+                <p className="text-[10.5px] text-slate-400 leading-normal">
+                  Export your entire custom partition tables, AOSP components, and compiled code files to a single JSON file. Resume on any workstation.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {/* Export Trigger */}
+                  <button
+                    onClick={onExportSession}
+                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Export Session
+                  </button>
+
+                  {/* Import Trigger */}
+                  <div className="flex-1 relative">
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const text = event.target?.result as string;
+                          if (onImportSession && onImportSession(text)) {
+                            showToast("Workspace imported successfully!", "success");
+                          } else {
+                            showToast("Invalid session JSON file.", "error");
+                          }
+                        };
+                        reader.readAsText(file);
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                      id="import-session-file-input"
+                    />
+                    <button
+                      type="button"
+                      className="w-full py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Import Session
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* SECTION 2: Active Git commit pushing system */}

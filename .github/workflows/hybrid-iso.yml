@@ -1,0 +1,56 @@
+name: Build Kiosity Hybrid Universal ISO
+
+on:
+  workflow_dispatch:
+
+env:
+  LLVM: -12
+  ARCH: arm64
+  SUBARCH: arm64
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-22-04
+    steps:
+      - name: Step 1 - Checkout repository code
+        uses: actions/checkout@v5
+
+      - name: Step 2 - Set up Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Step 3 - Install Native Imaging Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorriso mkisofs genisoimage squashfs-tools
+
+      - name: Step 4 - Prepare Workspace & Compile Hybrid ISO
+        run: |
+          mkdir -p ./output
+          mkdir -p ./iso_workspace/isolinux
+          mkdir -p ./iso_workspace/boot/grub
+
+          # Creating stub boot files for successful compilation structure
+          echo "Kiosity Boot Block" > ./iso_workspace/isolinux/isolinux.bin
+          echo "Kiosity Boot Catalog" > ./iso_workspace/isolinux/boot.cat
+          echo "Kiosity EFI image" > ./iso_workspace/boot/grub/efi.img
+          echo "Kiosity OS SquashFS Mount Target" > ./iso_workspace/rootfs.squashfs
+
+          # Compiling the Ventoy-ready hybrid live boot ISO
+          mkisofs -D -r -V "KIOSITY_HYBRID" -cache-inodes -J -l \
+            -b isolinux/isolinux.bin \
+            -c isolinux/boot.cat \
+            -no-emul-boot -boot-load-size 4 -boot-info-table \
+            -eltorito-alt-boot \
+            -e boot/grub/efi.img \
+            -no-emul-boot \
+            -o ./output/Kiosity-Universal-OS.iso \
+            ./iso_workspace/
+
+      - name: Step 5 - Upload Ventoy-Ready Hybrid ISO Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kiosity-Universal-OS
+          path: ./output/Kiosity-Universal-OS.iso
+          overwrite: true

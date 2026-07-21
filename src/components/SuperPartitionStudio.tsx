@@ -245,49 +245,45 @@ rsync -avPR --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r ./source_dir/ ./target_rootfs/`,
   }
 ];
 
-export default function SuperPartitionStudio() {
-  // Super Partition Meta Configuration
-  const [superCapacityMb, setSuperCapacityMb] = useState<number>(4096); // 4GB Default
+interface SuperPartitionStudioProps {
+  deviceMetadata?: any;
+  partitions: LogicalPartition[];
+  setPartitions: React.Dispatch<React.SetStateAction<LogicalPartition[]>>;
+  superCapacityMb: number;
+  setSuperCapacityMb: React.Dispatch<React.SetStateAction<number>>;
+}
+
+export default function SuperPartitionStudio({
+  deviceMetadata,
+  partitions,
+  setPartitions,
+  superCapacityMb,
+  setSuperCapacityMb
+}: SuperPartitionStudioProps) {
+  // Metadata Configuration (local defaults for non-prop attributes)
   const [metadataSizeKb, setMetadataSizeKb] = useState<number>(64);
   const [metadataSlots, setMetadataSlots] = useState<number>(2);
   const [alignmentBytes, setAlignmentBytes] = useState<number>(4096);
   const [targetBlockDevice, setTargetBlockDevice] = useState<string>('super');
 
-  // Interactive Partition List (AOSP standard partitions)
-  const [partitions, setPartitions] = useState<LogicalPartition[]>([
-    {
-      name: 'system',
-      sizeMb: 1500,
-      filesystem: 'erofs',
-      erofsCompression: 'lz4hc',
-      readOnly: true,
-      description: 'Android Core Operating System OS binaries, frameworks, and JNI linkages fused with Linux glibc dependencies.'
-    },
-    {
-      name: 'vendor',
-      sizeMb: 600,
-      filesystem: 'erofs',
-      erofsCompression: 'lz4',
-      readOnly: true,
-      description: 'Device-specific HAL services, AIDL drivers, hardware modules, and proprietary blobs.'
-    },
-    {
-      name: 'product',
-      sizeMb: 500,
-      filesystem: 'erofs',
-      erofsCompression: 'none',
-      readOnly: true,
-      description: 'OEM system specifications, application layers, branding materials, and vendor overlay configs.'
-    },
-    {
-      name: 'system_ext',
-      sizeMb: 300,
-      filesystem: 'ext4',
-      erofsCompression: 'none',
-      readOnly: false,
-      description: 'Optional system extension packages and custom development toolchains.'
-    }
+  // Simulated used space for headroom and alert calculations
+  const [partitionUsedMb, setPartitionUsedMb] = useState<Record<string, number>>({
+    system: 1435,     // Size: 1500 (headroom: 65MB, 4.3% -> ALERT!)
+    vendor: 580,      // Size: 600 (headroom: 20MB, 3.3% -> ALERT!)
+    product: 420,     // Size: 500 (headroom: 80MB, 16.0% -> OK)
+    system_ext: 240   // Size: 300 (headroom: 60MB, 20.0% -> OK)
+  });
+
+  // Bidirectional conversion cockpit state
+  const [conversionLogs, setConversionLogs] = useState<string[]>([
+    '[*] Bidirectional image conversion pipeline standby.',
+    '[*] Awaiting trigger...'
   ]);
+  const [isConverting, setIsConverting] = useState<boolean>(false);
+  const [activePipelineType, setActivePipelineType] = useState<'unpack' | 'repack' | null>(null);
+  const [checkedSparseChunks, setCheckedSparseChunks] = useState<Record<number, boolean>>(
+    Array.from({ length: 19 }, (_, i) => i).reduce((acc, i) => ({ ...acc, [i]: true }), {})
+  );
 
   // Form states for creating/editing partition
   const [newPartName, setNewPartName] = useState<string>('rootfs_fused');
@@ -644,87 +640,393 @@ export default function SuperPartitionStudio() {
         </div>
       </div>
 
-      {/* OVERVIEW ALLOCATION BAR (GUI in Front) */}
-      <div className="bg-[#111827] border border-[#1e293b] rounded-2xl p-5 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+      {/* MULTI-TRACK ALLOCATION VISUALIZER & MULTI-TRACK GAUGE SYSTEM */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+        
+        {/* MULTI-TRACK GAUGE TRACKS - Spans 8 */}
+        <div className="xl:col-span-8 bg-[#111827] border border-[#1e293b] rounded-2xl p-6 shadow-xl space-y-6">
           <div>
-            <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-indigo-400" /> Super Block Dynamic Allocator Map (GUI in Front)
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Activity className="w-5 h-5 text-indigo-400" /> Multi-Track Allocation Visualizer & Gauges
             </h3>
-            <span className="text-[11px] text-slate-400 block mt-0.5">Visually monitors partition sectors size allocations to avoid image bounds overruns.</span>
+            <p className="text-xs text-slate-400 mt-1">
+              Monitors individual partition sectors allocation and compression ratios. Slide the usage meters to simulate partition fullness.
+            </p>
           </div>
-          <div className="flex items-center gap-4 text-xs font-mono">
+
+          <div className="space-y-6">
+            {partitions.map((p) => {
+              const usedMb = partitionUsedMb[p.name] || 0;
+              const headroom = p.sizeMb - usedMb;
+              const headroomPct = (headroom / p.sizeMb) * 100;
+              const isAlert = headroomPct < 5.0;
+              const isWarning = headroomPct < 10.0 && headroomPct >= 5.0;
+
+              // Calculate EROFS compression space savings
+              let reclaimedMb = 0;
+              if (p.filesystem === 'erofs') {
+                reclaimedMb = Math.round(usedMb * (p.erofsCompression === 'lz4hc' ? 0.45 : p.erofsCompression === 'lz4' ? 0.3 : 0));
+              }
+
+              // Color of outer progress fill
+              const progressColorClass = isAlert 
+                ? 'bg-rose-500 shadow-lg shadow-rose-500/20' 
+                : isWarning 
+                  ? 'bg-amber-500 shadow-lg shadow-amber-500/10' 
+                  : 'bg-emerald-500 shadow-lg shadow-emerald-500/15';
+
+              return (
+                <div key={p.name} className="p-4 bg-slate-950 rounded-xl border border-slate-900/80 space-y-3 relative overflow-hidden group">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-900 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-xs text-indigo-400">/{p.name}</span>
+                      <span className="text-[10px] bg-slate-900 text-slate-500 border border-slate-800 px-1.5 py-0.2 rounded font-mono uppercase">
+                        {p.filesystem}
+                      </span>
+                      {p.filesystem === 'erofs' && (
+                        <span className="text-[9.5px] bg-teal-500/10 text-teal-400 border border-teal-500/20 px-1.5 py-0.2 rounded font-mono">
+                          Saved EROFS: -{reclaimedMb} MB ({p.erofsCompression})
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 font-mono text-[10.5px]">
+                      <span className="text-slate-500">Allocated: <strong className="text-white">{p.sizeMb}MB</strong></span>
+                      <span className="text-slate-500">Used: <strong className="text-indigo-300">{usedMb}MB</strong></span>
+                      <span className={`font-bold ${isAlert ? 'text-rose-400 animate-pulse' : isWarning ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        Headroom: {headroom}MB ({headroomPct.toFixed(1)}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Dual progress bar track */}
+                  <div className="space-y-1">
+                    <div className="w-full h-4 bg-[#0a0a14] rounded-full overflow-hidden border border-slate-900 relative p-0.5 flex">
+                      {/* Used partition filesystem block space */}
+                      <div 
+                        className={`h-full rounded-full transition-all duration-300 ${progressColorClass}`}
+                        style={{ width: `${(usedMb / p.sizeMb) * 100}%` }}
+                      />
+                      
+                      {/* Reclaimed EROFS Space Overlay represented inside sized space */}
+                      {reclaimedMb > 0 && (
+                        <div 
+                          className="h-full bg-gradient-to-r from-teal-500 to-teal-600 rounded-r-full opacity-60 border-l border-teal-400/30 transition-all duration-300"
+                          style={{ width: `${(reclaimedMb / p.sizeMb) * 100}%` }}
+                          title={`EROFS reclaimed space: ${reclaimedMb}MB`}
+                        />
+                      )}
+                    </div>
+                    <div className="flex justify-between text-[9px] font-mono text-slate-500 uppercase">
+                      <span>0% Sectors</span>
+                      {reclaimedMb > 0 && <span className="text-teal-400">Teal Segment = EROFS Saved ({reclaimedMb}M)</span>}
+                      <span>100% Boundary</span>
+                    </div>
+                  </div>
+
+                  {/* SLIDER FOR SIMULATING USED SPACE */}
+                  <div className="flex items-center gap-3 bg-[#0c0f1d] p-2 rounded border border-[#1e293b]/20">
+                    <span className="text-[10px] uppercase font-mono text-slate-400 font-bold shrink-0">Simulate Size:</span>
+                    <input 
+                      type="range"
+                      min={Math.round(p.sizeMb * 0.5)}
+                      max={p.sizeMb - 2}
+                      value={usedMb}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setPartitionUsedMb(prev => ({
+                          ...prev,
+                          [p.name]: val
+                        }));
+                      }}
+                      className="flex-1 accent-indigo-500 cursor-pointer h-1 rounded"
+                    />
+                    <div className="flex gap-1.5 shrink-0">
+                      <button 
+                        onClick={() => {
+                          const val = Math.max(Math.round(p.sizeMb * 0.5), usedMb - 20);
+                          setPartitionUsedMb(prev => ({ ...prev, [p.name]: val }));
+                        }}
+                        className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded text-[10px] font-mono"
+                      >
+                        -20M
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const val = Math.min(p.sizeMb - 2, usedMb + 20);
+                          setPartitionUsedMb(prev => ({ ...prev, [p.name]: val }));
+                        }}
+                        className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded text-[10px] font-mono"
+                      >
+                        +20M
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Floating tooltip/alert boundary */}
+                  {isAlert && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded font-mono text-[9px] text-rose-400 font-bold animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                      SECTOR LIMIT EXCEEDED
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* REAL-TIME PARTITION HEALTH MONITOR CARD - Spans 4 */}
+        <div className="xl:col-span-4 flex flex-col gap-6">
+          <div className="bg-[#111827] border border-[#1e293b] rounded-2xl p-5 shadow-xl flex-1 flex flex-col justify-between">
             <div>
-              <span className="text-slate-500">Allocated:</span>{' '}
-              <span className={`font-bold ${isOverAllocated ? 'text-rose-400' : 'text-indigo-400'}`}>
-                {totalAllocatedMb} MB
-              </span>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider border-b border-slate-900 pb-2.5 flex items-center gap-2">
+                <AlertTriangle className="w-4.5 h-4.5 text-indigo-400" /> Real-time Health Monitor
+              </h3>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                Active daemon polling logical system headroom. Highlights immediate flash and partition overrun risks.
+              </p>
+
+              {/* ALERT RENDERING DISPATCHER */}
+              <div className="mt-4 space-y-3 flex-1">
+                {(() => {
+                  const criticalPartitions = partitions.filter(p => {
+                    const used = partitionUsedMb[p.name] || 0;
+                    const h = p.sizeMb - used;
+                    return (h / p.sizeMb) < 0.05;
+                  });
+
+                  if (criticalPartitions.length > 0) {
+                    return (
+                      <div className="space-y-2.5">
+                        <div className="p-3 bg-rose-500/10 border border-rose-500/25 rounded-xl text-[11px] text-rose-400 font-bold font-mono animate-pulse flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
+                          <span>WARNING: CRITICAL HEADROOM EXCEEDED</span>
+                        </div>
+                        
+                        {criticalPartitions.map(p => {
+                          const used = partitionUsedMb[p.name] || 0;
+                          const h = p.sizeMb - used;
+                          const hPct = (h / p.sizeMb) * 100;
+                          return (
+                            <div key={p.name} className="p-3.5 bg-slate-950 border border-rose-500/20 rounded-xl space-y-1">
+                              <span className="text-[11px] font-mono text-white block uppercase font-bold">/{p.name} space critical</span>
+                              <span className="text-[10.5px] text-slate-400 block leading-normal">
+                                Headroom level is currently <strong className="text-rose-400">{hPct.toFixed(1)}% ({h}MB remaining)</strong>, which is below the 5% sector ceiling limit.
+                              </span>
+                              <span className="text-[9.5px] text-rose-500 font-mono font-bold block pt-1 uppercase">
+                                Action: Decrease simulated files size or expand partition allocation limits!
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto text-lg font-bold">
+                        ✓
+                      </div>
+                      <span className="text-xs font-bold text-white block uppercase tracking-wider">All Systems Compliant</span>
+                      <p className="text-[10.5px] text-slate-400 leading-normal">
+                        All dynamic AOSP partition layouts meet compliance guidelines. Headroom stays above 5% sector threshold.
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
-            <div>
-              <span className="text-slate-500">Total Capacity:</span>{' '}
-              <span className="font-bold text-white">{superCapacityMb} MB</span>
-            </div>
-            <div>
-              <span className="text-slate-500">Free:</span>{' '}
-              <span className="font-bold text-emerald-400">{freeSpaceMb} MB</span>
+
+            {/* Layout compliance specs summary */}
+            <div className="mt-4 pt-3.5 border-t border-slate-900 text-[10.5px] text-slate-500 font-mono leading-normal">
+              🛡️ <strong>Partition Watchdog:</strong> Monitors write and flash capabilities to secure system image integrity.
             </div>
           </div>
         </div>
 
-        {/* Dynamic block horizontal bar */}
-        <div className="w-full h-10 bg-slate-950 rounded-xl overflow-hidden border border-slate-900/80 flex p-1.5 gap-1 shadow-inner relative">
-          {partitions.map((p, idx) => {
-            const widthPct = (p.sizeMb / superCapacityMb) * 100;
-            // Cycle background color based on name/index
-            const bgColors = [
-              'bg-indigo-500/20 hover:bg-indigo-500/30 border-indigo-500/40 text-indigo-300',
-              'bg-amber-500/20 hover:bg-amber-500/30 border-amber-500/40 text-amber-300',
-              'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/40 text-blue-300',
-              'bg-purple-500/20 hover:bg-purple-500/30 border-purple-500/40 text-purple-300',
-              'bg-teal-500/20 hover:bg-teal-500/30 border-teal-500/40 text-teal-300'
-            ];
-            const styleClass = bgColors[idx % bgColors.length];
+      </div>
 
-            return (
-              <div
-                key={p.name}
-                className={`h-full border rounded-lg flex items-center justify-center font-mono text-[10px] font-bold transition-all relative group cursor-pointer ${styleClass}`}
-                style={{ width: `${widthPct}%` }}
+      {/* BIDIRECTIONAL IMAGE CONVERSION CONSOLE */}
+      <div className="bg-[#111827] border border-[#1e293b] rounded-2xl p-6 shadow-xl space-y-6">
+        <div>
+          <span className="px-2.5 py-0.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-[10px] font-bold font-mono rounded-full uppercase tracking-widest">
+            Conversion Cockpit Engine
+          </span>
+          <h3 className="text-base font-extrabold text-white mt-1.5 flex items-center gap-2">
+            <Database className="w-5 h-5 text-indigo-500" /> Bidirectional Image Conversion Console
+          </h3>
+          <p className="text-xs text-slate-400">
+            Split, stitch, repack, and mount Android dynamic sparse files. Seamlessly transition raw firmware partition structures into flashable dynamic blocks.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* LEFT GUI VIEW (CONVERSION COCKPIT) - Spans 7 */}
+          <div className="lg:col-span-7 bg-slate-950 p-5 rounded-xl border border-slate-900 space-y-5">
+            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono border-b border-slate-900 pb-2 flex items-center justify-between">
+              <span>Cockpit Action Vectors</span>
+              <span className="text-[10px] text-indigo-400 font-normal">Auto-detected hardware spec</span>
+            </h4>
+
+            {/* Sparse Chunk Path with Codename pre-populate */}
+            <div>
+              <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 font-mono">
+                Autodetected Sparse Chunk Directory Path
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`/sdcard/Download/${deviceMetadata?.codename || 'genevn'}_super.img_sparsechunk.*`}
+                  className="w-full bg-[#0a0a14] border border-slate-900 rounded-lg p-2.5 text-xs text-indigo-300 font-mono focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Checklist grid of discovered fragments */}
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase font-bold text-slate-500 block font-mono">
+                Discovered & Verified Chunk Fragments (0 - 18)
+              </span>
+              <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                {Array.from({ length: 19 }).map((_, i) => (
+                  <label
+                    key={i}
+                    className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900/60 border border-slate-800 text-slate-400 font-mono text-[9px] relative cursor-pointer select-none"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedSparseChunks[i] || false}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setCheckedSparseChunks(prev => ({ ...prev, [i]: checked }));
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="flex items-center gap-1">
+                      <div className={`w-1.5 h-1.5 rounded-full ${checkedSparseChunks[i] ? 'bg-emerald-400 shadow shadow-emerald-400/50' : 'bg-slate-700'}`} />
+                      <span>ch.{i}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={() => {
+                  if (isConverting) return;
+                  setIsConverting(true);
+                  setActivePipelineType('unpack');
+                  setConversionLogs(['[*] Initializing Bidirectional Image Converter Context Mode...']);
+                  
+                  const codename = deviceMetadata?.codename || 'genevn';
+                  const logSteps = [
+                    `[EXTRACTION]: Found 19 sparse chunk fragments. Verification signature matched GKI block mapping.`,
+                    `[EXTRACTION]: Concatenating sparse chunks into raw linear partition container...`,
+                    `$ simg2img /sdcard/Download/${codename}_super.img_sparsechunk.* ./extracted/super.raw`,
+                    `[EXTRACTION]: Simg2img processing finished. CRC-32 hash verified (0xA4F28BB).`,
+                    `[EXTRACTION]: Invoking low-level lpunpack sector splitter...`,
+                    `$ lpunpack ./extracted/super.raw ./extracted_partitions/`,
+                    `[EXTRACTION]: Successfully extracted 4 logical partitions: /system, /vendor, /product, /system_ext.`,
+                    `[PIPELINE COMPLETE]: Bidirectional extraction sequence finished cleanly.`
+                  ];
+
+                  logSteps.forEach((log, index) => {
+                    setTimeout(() => {
+                      setConversionLogs(prev => [...prev, log]);
+                      if (index === logSteps.length - 1) {
+                        setIsConverting(false);
+                      }
+                    }, (index + 1) * 350);
+                  });
+                }}
+                disabled={isConverting}
+                className="py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs font-mono transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow shadow-indigo-500/10"
               >
-                <span className="truncate px-1 text-center">{p.name} ({p.sizeMb}M)</span>
-                
-                {/* Visual tooltip */}
-                <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-[#0a0d18] border border-slate-800 p-3 rounded-lg text-left hidden group-hover:block z-30 shadow-2xl min-w-[200px] w-max text-[11px] leading-relaxed">
-                  <span className="block font-bold text-white uppercase mb-0.5">{p.name} Partition</span>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-slate-400 font-mono text-[10px] mt-1.5 border-t border-slate-900 pt-1.5">
-                    <span>File System:</span><span className="text-white font-bold uppercase">{p.filesystem}</span>
-                    <span>Compression:</span><span className="text-indigo-400 uppercase">{p.erofsCompression}</span>
-                    <span>Capacity:</span><span className="text-white font-semibold">{p.sizeMb} MB</span>
-                    <span>Sectors Mode:</span><span className="text-amber-400">{p.readOnly ? 'Read-Only' : 'Read-Write'}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 leading-normal mt-2 border-t border-slate-900 pt-1.5 max-w-[250px]">{p.description}</p>
+                <RefreshCw className={`w-3.5 h-3.5 ${isConverting && activePipelineType === 'unpack' ? 'animate-spin' : ''}`} />
+                Stitch Chunks & Unpack Super Image Layer Tree
+              </button>
+
+              <button
+                onClick={() => {
+                  if (isConverting) return;
+                  setIsConverting(true);
+                  setActivePipelineType('repack');
+                  setConversionLogs(['[COMPILATION VECTORS]: Commencing reverse system architecture packaging...']);
+                  
+                  const logSteps = [
+                    `[COMPILATION]: Building high-performance EROFS filesystem tree for logical partitions...`,
+                    `$ mkfs.erofs -zlz4hc,9 ./output/system.img ./extracted_partitions/system/`,
+                    `$ mkfs.erofs -zlz4,5 ./output/vendor.img ./extracted_partitions/vendor/`,
+                    `$ mkfs.erofs -znone ./output/product.img ./extracted_partitions/product/`,
+                    `[COMPILATION]: Recompiling Read-Write EXT4 system extension partition...`,
+                    `$ make_ext4fs -s -l 314572800 ./output/system_ext.img ./extracted_partitions/system_ext/`,
+                    `[COMPILATION]: Assembling unified Super partition table map using lpmake...`,
+                    `$ lpmake --metadata-size 65536 --metadata-slots 2 --device super:4294967296 --group android_dynamic_group:4294967296 --partition system:readonly:1572864000:android_dynamic_group --image system=./output/system.img --partition vendor:readonly:629145600:android_dynamic_group --image vendor=./output/vendor.img --partition product:readonly:524288000:android_dynamic_group --image product=./output/product.img --partition system_ext:readonly:314572800:android_dynamic_group --image system_ext=./output/system_ext.img --output ./output/super.raw`,
+                    `[COMPILATION]: Compressing raw super.raw block device into Android compliant sparse image package...`,
+                    `$ img2simg ./output/super.raw ./output/super.img`,
+                    `[COMPILATION VECTORS COMPLETE]: Sparse super image package compiled successfully (Size: 2450MB sparse).`
+                  ];
+
+                  logSteps.forEach((log, index) => {
+                    setTimeout(() => {
+                      setConversionLogs(prev => [...prev, log]);
+                      if (index === logSteps.length - 1) {
+                        setIsConverting(false);
+                      }
+                    }, (index + 1) * 300);
+                  });
+                }}
+                disabled={isConverting}
+                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs font-mono transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow shadow-emerald-500/10"
+              >
+                <Wrench className={`w-3.5 h-3.5 ${isConverting && activePipelineType === 'repack' ? 'animate-spin' : ''}`} />
+                Compile Partitions & Repack Sparse Super Package
+              </button>
+            </div>
+          </div>
+
+          {/* RIGHT REGISTRY VIEW (CONVERSION PIPELINE LOGS) - Spans 5 */}
+          <div className="lg:col-span-5 flex flex-col h-full justify-between">
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 font-mono text-[10px] text-slate-300 flex-1 flex flex-col justify-between h-[300px]">
+              <div>
+                <div className="flex items-center justify-between border-b border-slate-900 pb-2 mb-2">
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1">
+                    <Terminal className="w-3.5 h-3.5 text-indigo-400" /> Conversion Pipeline Logs
+                  </span>
+                  <span className="text-[9px] bg-slate-900 border border-slate-800 px-1.5 py-0.2 rounded text-indigo-400">
+                    {isConverting ? 'CONVERTING' : 'STANDBY'}
+                  </span>
+                </div>
+
+                <div className="space-y-1 max-h-[220px] overflow-y-auto scrollbar-thin">
+                  {conversionLogs.map((log, i) => (
+                    <div key={i} className="leading-relaxed text-slate-400">
+                      {log.startsWith('$') ? (
+                        <span className="text-emerald-400 font-semibold">{log}</span>
+                      ) : log.includes('ERROR') ? (
+                        <span className="text-rose-400 font-bold">{log}</span>
+                      ) : (
+                        <span>{log}</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
-            );
-          })}
 
-          {freeSpaceMb > 0 && (
-            <div 
-              className="h-full border border-dashed border-slate-800 rounded-lg flex items-center justify-center font-mono text-[10px] text-slate-500 bg-slate-900/10"
-              style={{ width: `${(freeSpaceMb / superCapacityMb) * 100}%` }}
-            >
-              <span>{freeSpaceMb}M unallocated</span>
+              <div className="text-[9px] text-slate-500 border-t border-slate-900 pt-2 flex justify-between uppercase">
+                <span>Block mapping: Linear</span>
+                <span>Active thread: AOSP_LP_v2</span>
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* Warnings & error banner */}
-        {isOverAllocated && (
-          <div className="mt-4 p-3 bg-rose-500/10 rounded-xl border border-rose-500/30 flex items-center gap-2.5 text-xs text-rose-400 font-medium">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span><strong>Critical Layout Space Overrun:</strong> Your partition maps allocate a total of {totalAllocatedMb}MB, exceeding the dynamic super image limit of {superCapacityMb}MB by {totalAllocatedMb - superCapacityMb}MB! Decrease specific partition volumes to proceed.</span>
           </div>
-        )}
+
+        </div>
       </div>
 
       {/* WORKSPACE DIVIDER: Split visual GUI vs Coding background */}

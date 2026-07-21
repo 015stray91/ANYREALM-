@@ -75,6 +75,74 @@ export default function AospCodeStudio({
     "[system_app] Bind successful to Context.COLOR_SENSOR_SERVICE"
   ]);
 
+  // Integrated VS Code Output Terminal state
+  const [wsLogs, setWsLogs] = useState<string[]>([]);
+  const [isWsCompiling, setIsWsCompiling] = useState(false);
+  const [githubOwner, setGithubOwner] = useState('slm91-sg');
+  const [githubRepo, setGithubRepo] = useState('kiosity-appliance-os');
+  const [activeConsoleTab, setActiveConsoleTab] = useState<'terminal' | 'github_actions'>('terminal');
+
+  const handleTriggerGithubCompile = () => {
+    if (isWsCompiling) return;
+    setIsWsCompiling(true);
+    setWsLogs([]);
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socketUrl = `${protocol}//${window.location.host}/`;
+    
+    setWsLogs(prev => [...prev, `[*] Connecting to Any Realm Daemon at ${socketUrl}...`]);
+    
+    try {
+      const ws = new WebSocket(socketUrl);
+      
+      ws.onopen = () => {
+        setWsLogs(prev => [...prev, `[SUCCESS] Secure WebSocket connected.`]);
+        setWsLogs(prev => [...prev, `[*] Offloading build transaction to GitHub Actions for ${githubOwner}/${githubRepo}...`]);
+        
+        ws.send(JSON.stringify({
+          action: "COMPILE_VENTOY_ISO",
+          params: {
+            owner: githubOwner,
+            repo: githubRepo
+          }
+        }));
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'COMPILE_LOG') {
+            setWsLogs(prev => [...prev, data.line]);
+          } else if (data.type === 'COMPILE_STATUS') {
+            setIsWsCompiling(false);
+            if (data.success) {
+              setWsLogs(prev => [...prev, `[SUCCESS] GitHub Action compilation run successfully triggered!`]);
+            } else {
+              setWsLogs(prev => [...prev, `[ERROR] GitHub Action triggering failed or returned non-200. Confirm credentials.`]);
+            }
+            ws.close();
+          }
+        } catch (e) {
+          console.error("Error reading websocket message:", e);
+        }
+      };
+      
+      ws.onerror = (err) => {
+        setWsLogs(prev => [...prev, `[ERROR] WebSocket connection transmission fault.`]);
+        setIsWsCompiling(false);
+      };
+      
+      ws.onclose = () => {
+        setWsLogs(prev => [...prev, `[*] Live build log session closed.`]);
+        setIsWsCompiling(false);
+      };
+      
+    } catch (e: any) {
+      setWsLogs(prev => [...prev, `[ERROR] Failed to instantiate socket: ${e.message}`]);
+      setIsWsCompiling(false);
+    }
+  };
+
   const roms: RomOption[] = [
     {
       id: 'aosp-generic',
@@ -516,7 +584,7 @@ export default function AospCodeStudio({
             </div>
 
             {/* Center Code Editor view with dynamic code contents */}
-            <div className="md:col-span-6 bg-slate-950 p-4 flex flex-col border-r border-[#1e293b]">
+            <div className="md:col-span-6 bg-slate-950 p-4 flex flex-col border-r border-[#1e293b] justify-between">
               {activeFile ? (
                 <div className="flex-1 flex flex-col h-full justify-between">
                   <div>
@@ -538,14 +606,93 @@ export default function AospCodeStudio({
 
                   <textarea
                     readOnly
-                    className="w-full flex-1 bg-transparent text-slate-300 font-mono text-[11.5px] leading-relaxed resize-none focus:outline-none scrollbar-thin scrollbar-thumb-slate-850 h-[380px]"
+                    className="w-full flex-1 bg-transparent text-slate-300 font-mono text-[11.5px] leading-relaxed resize-none focus:outline-none scrollbar-thin scrollbar-thumb-slate-850 h-[220px]"
                     style={{ tabSize: 4 }}
                     value={activeFile.content}
                     id="active-file-editor"
                   />
                   
-                  <div className="pt-2 text-[10px] text-slate-500 font-mono text-right">
+                  <div className="pt-2 pb-2 text-[10px] text-slate-500 font-mono text-right border-b border-slate-900/60">
                     Lines: {activeFile.content.split('\n').length}
+                  </div>
+
+                  {/* Integrated VS Code-like Bottom Terminal / Actions Panel */}
+                  <div className="mt-3 pt-1 flex flex-col gap-2">
+                    <div className="flex items-center justify-between border-b border-slate-900 pb-1">
+                      <div className="flex items-center gap-4">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">OUTPUT CHANNELS</span>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setActiveConsoleTab('terminal')}
+                            className={`px-2 py-0.5 text-[9.5px] font-semibold rounded cursor-pointer ${activeConsoleTab === 'terminal' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-500 hover:text-slate-300'}`}
+                          >
+                            Local Terminal
+                          </button>
+                          <button 
+                            onClick={() => setActiveConsoleTab('github_actions')}
+                            className={`px-2 py-0.5 text-[9.5px] font-semibold rounded cursor-pointer ${activeConsoleTab === 'github_actions' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'}`}
+                          >
+                            GitHub Actions (Live ISO Compile)
+                          </button>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-mono text-slate-600">Secure Client Ingress</span>
+                    </div>
+
+                    {activeConsoleTab === 'terminal' && (
+                      <div className="bg-black/40 p-2 rounded border border-slate-900/50 font-mono text-[9px] text-slate-400 h-[100px] overflow-y-auto space-y-1">
+                        <div>$ aosp-build-daemon --status</div>
+                        <div className="text-blue-400">[DAEMON] Workspace edits captured successfully. Writable overlay persistent.</div>
+                        <div className="text-emerald-400">[DAEMON] Active files tracked: {files.length}</div>
+                        <div className="text-slate-500">[HINT] Target building can be triggered directly in the adjacent tab.</div>
+                      </div>
+                    )}
+
+                    {activeConsoleTab === 'github_actions' && (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded border border-slate-900/60">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9.5px] font-mono text-slate-500">Repo:</span>
+                            <input 
+                              type="text" 
+                              value={githubOwner} 
+                              onChange={(e) => setGithubOwner(e.target.value)}
+                              className="bg-slate-900 border border-slate-800 text-[9.5px] px-1.5 py-0.5 rounded text-slate-200 w-16" 
+                              placeholder="owner"
+                            />
+                            <span className="text-[9.5px] font-mono text-slate-500">/</span>
+                            <input 
+                              type="text" 
+                              value={githubRepo} 
+                              onChange={(e) => setGithubRepo(e.target.value)}
+                              className="bg-slate-900 border border-slate-800 text-[9.5px] px-1.5 py-0.5 rounded text-slate-200 w-28" 
+                              placeholder="repository"
+                            />
+                          </div>
+                          
+                          <button
+                            onClick={handleTriggerGithubCompile}
+                            disabled={isWsCompiling}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-[9px] rounded cursor-pointer transition-colors"
+                          >
+                            {isWsCompiling ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : <Play className="w-2.5 h-2.5" />}
+                            {isWsCompiling ? "Compiling..." : "🚀 Dispatch Actions"}
+                          </button>
+                        </div>
+
+                        <div className="bg-black/60 p-2 rounded border border-slate-900/60 font-mono text-[9px] text-slate-300 h-[80px] overflow-y-auto space-y-1 scrollbar-none">
+                          {wsLogs.length === 0 ? (
+                            <div className="text-slate-500 italic">No live logs. Click 'Dispatch Actions' to run workflow compile on your repo.</div>
+                          ) : (
+                            wsLogs.map((line, i) => (
+                              <div key={i} className={`truncate ${line.startsWith('[SUCCESS]') || line.includes('successful') ? 'text-emerald-400 font-bold' : line.startsWith('[ERR') || line.includes('ERROR') ? 'text-red-400' : line.startsWith('[SENDING') || line.includes('Offloading') ? 'text-blue-400' : 'text-slate-300'}`}>
+                                {line}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
