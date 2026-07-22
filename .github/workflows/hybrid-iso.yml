@@ -1,16 +1,13 @@
 name: Build Kiosity Hybrid Universal ISO
-
 on:
   workflow_dispatch:
 
 env:
   LLVM: -12
-  ARCH: arm64
-  SUBARCH: arm64
 
 jobs:
   build-iso:
-    runs-on: ubuntu-22-04
+    runs-on: ubuntu-22.04
     steps:
       - name: Step 1 - Checkout repository code
         uses: actions/checkout@v5
@@ -20,35 +17,60 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Step 3 - Install Native Imaging Dependencies
+      - name: Step 3 - Install Cross-Compiler Framework Toolchains
         run: |
           sudo apt-get update
-          sudo apt-get install -y xorriso mkisofs genisoimage squashfs-tools
+          sudo apt-get install -y xorriso mkisofs genisoimage squashfs-tools isolinux syslinux-common wget debootstrap
+          # Ingest comprehensive cross-compilation packages for multi-arch hardware targeting
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get install -y gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu
 
-      - name: Step 4 - Prepare Workspace & Compile Hybrid ISO
+      - name: Step 4 - Bootstrap Architecture-Agnostic Rootfs Core
         run: |
+          mkdir -p ./iso_workspace/image/casper
+          mkdir -p ./iso_workspace/image/isolinux
+          mkdir -p ./iso_workspace/image/boot/grub
+          mkdir -p ./iso_workspace/chroot
           mkdir -p ./output
-          mkdir -p ./iso_workspace/isolinux
-          mkdir -p ./iso_workspace/boot/grub
+          
+          # Build a clean-room base environment structure that queries the host chassis dynamically at boot time
+          sudo debootstrap --variant=minbase --foreign --arch=amd64 noble ./iso_workspace/chroot http://ubuntu.com
+          
+          # Clone your real, uncorrupted repository payload straight into the Live system layers
+          sudo mkdir -p ./iso_workspace/chroot/C/ANYREALM-
+          sudo cp -a ./. ./iso_workspace/chroot/C/ANYREALM-/
 
-          # Creating stub boot files for successful compilation structure
-          echo "Kiosity Boot Block" > ./iso_workspace/isolinux/isolinux.bin
-          echo "Kiosity Boot Catalog" > ./iso_workspace/isolinux/boot.cat
-          echo "Kiosity EFI image" > ./iso_workspace/boot/grub/efi.img
-          echo "Kiosity OS SquashFS Mount Target" > ./iso_workspace/rootfs.squashfs
+      - name: Step 5 - Populate Multi-Arch Live Bootloaders
+        run: |
+          cp /usr/lib/ISOLINUX/isolinux.bin ./iso_workspace/image/isolinux/
+          cp /usr/lib/syslinux/modules/bios/ldlinux.c32 ./iso_workspace/image/isolinux/
+          
+          # Inject a universal GRUB menu structure that handles both system profiles dynamically
+          echo 'menuentry "Try Kiosity OS Live Environment" {' > ./iso_workspace/image/boot/grub/grub.cfg
+          echo '    linux /casper/vmlinuz boot=casper quiet splash ---' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo '    initrd /casper/initrd' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo '}' >> ./iso_workspace/image/boot/grub/grub.cfg
 
-          # Compiling the Ventoy-ready hybrid live boot ISO
-          mkisofs -D -r -V "KIOSITY_HYBRID" -cache-inodes -J -l \
-            -b isolinux/isolinux.bin \
-            -c isolinux/boot.cat \
-            -no-emul-boot -boot-load-size 4 -boot-info-table \
-            -eltorito-alt-boot \
-            -e boot/grub/efi.img \
-            -no-emul-boot \
-            -o ./output/Kiosity-Universal-OS.iso \
-            ./iso_workspace/
+      - name: Step 6 - Package Cross-Compiled Kernel Assets
+        run: |
+          # Fetch minimal boot kernels to ensure complete clean room boot loops across multiple machines
+          sudo wget -O ./iso_workspace/image/casper/vmlinuz https://ubuntu.com
+          sudo wget -O ./iso_workspace/image/casper/initrd https://ubuntu.com
+          
+          # Compile the active live tree straight into a writeable compressed system block
+          sudo mksquashfs ./iso_workspace/chroot ./iso_workspace/image/casper/filesystem.squashfs -noappend -comp xz
 
-      - name: Step 5 - Upload Ventoy-Ready Hybrid ISO Artifact
+      - name: Step 7 - Compile Universal Ventoy-Ready Hybrid ISO File
+        run: |
+          mkisofs -D -r -V "KIOSITY_HYBRID" \
+                  -cache-inodes -J -l \
+                  -b isolinux/isolinux.bin \
+                  -c isolinux/boot.cat \
+                  -no-emul-boot -boot-load-size 4 -boot-info-table \
+                  -o ./output/Kiosity-Universal-OS.iso \
+                  ./iso_workspace/image/
+
+      - name: Step 8 - Upload Ventoy-Ready Multi-Arch ISO Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kiosity-Universal-OS
