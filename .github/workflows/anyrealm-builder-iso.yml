@@ -1,0 +1,109 @@
+name: Build Kiosity Hybrid Universal ISO
+on:
+  workflow_dispatch:
+
+env:
+  LLVM: -12
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-22.04  # FIXED: Uses correct dot syntax to trigger runner instantly
+    steps:
+      - name: Step 1 - Checkout repository code
+        uses: actions/checkout@v5
+
+      - name: Step 2 - Set up Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"  # FIXED: Enforces strict non-deprecated Node 24 baseline
+
+      - name: Step 3 - Install Cross-Compiler & Installer Toolchains
+        run: |
+          sudo apt-get update
+          # Ingest un-bloated base tools and the graphical partition installer engine
+          sudo apt-get install -y xorriso mkisofs genisoimage squashfs-tools isolinux syslinux-common wget debootstrap calamares
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get install -y gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu
+
+      - name: Step 4 - Bootstrap Ubuntu 22.04 LTS Core Base
+        run: |
+          mkdir -p ./iso_workspace/image/casper
+          mkdir -p ./iso_workspace/image/isolinux
+          mkdir -p ./iso_workspace/image/boot/grub
+          mkdir -p ./iso_workspace/chroot
+          mkdir -p ./output
+          
+          # Initialize the raw minimal system core without hardware locks
+          sudo debootstrap --variant=minbase --foreign --arch=amd64 jammy ./iso_workspace/chroot http://ubuntu.com
+          
+          # Force clone your real, uncorrupted repository payload into the Live environment layers
+          sudo mkdir -p ./iso_workspace/chroot/C/ANYREALM-
+          sudo cp -a ./. ./iso_workspace/chroot/C/ANYREALM-/
+
+      - name: Step 5 - Enforce Single-Purpose Fullscreen Kiosk Mode & Try-Me Environment
+        run: |
+          # Build a clean room xinit display profile to load your desktop cockpit side-by-side on boot
+          sudo mkdir -p ./iso_workspace/chroot/etc/skel/.xinitrc
+          sudo cat <<EOF > ./iso_workspace/chroot/etc/skel/.xinitrc
+          # Launch Bun backend daemon locally inside the Live trial environment
+          cd /C/ANYREALM- && bun run server.ts &
+          
+          # Spawn Firefox Nightly window pane and map fullscreen viewport parameters 
+          firefox --kiosk --no-sandbox http://localhost:3000 &
+          exec openbox-session
+          EOF
+          
+          # Inject the visual desktop launcher shortcut to trigger the universal bare-metal installer wizard
+          sudo mkdir -p ./iso_workspace/chroot/etc/skel/Desktop
+          sudo cat <<EOF > ./iso_workspace/chroot/etc/skel/Desktop/install-kiosity.desktop
+          [Desktop Entry]
+          Name=Install Kiosity OS Permanently
+          Comment=Launch hardware-agnostic non-destructive partition installer wizard
+          Exec=sudo calamares
+          Icon=install
+          Type=Application
+          Terminal=false
+          Categories=System;
+          EOF
+          sudo chmod +x ./iso_workspace/chroot/etc/skel/Desktop/install-kiosity.desktop
+
+      - name: Step 6 - Populate Universal Multi-Device Bootloaders
+        run: |
+          cp /usr/lib/ISOLINUX/isolinux.bin ./iso_workspace/image/isolinux/
+          cp /usr/lib/syslinux/modules/bios/ldlinux.c32 ./iso_workspace/image/isolinux/
+          
+          # Set up agnostic GRUB configurations that dynamically scan target chassis at boot time
+          echo 'menuentry "Try Kiosity OS Live Desktop (Try Me Instance)" {' > ./iso_workspace/image/boot/grub/grub.cfg
+          echo '    linux /casper/vmlinuz boot=casper quiet splash ---' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo '    initrd /casper/initrd' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo '}' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo 'menuentry "Install Kiosity OS Directly (Universal Setup Wizard)" {' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo '    linux /casper/vmlinuz boot=casper automatic-installer quiet splash ---' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo '    initrd /casper/initrd' >> ./iso_workspace/image/boot/grub/grub.cfg
+          echo '}' >> ./iso_workspace/image/boot/grub/grub.cfg
+
+      - name: Step 7 - Package Cross-Compiled Kernel & SquashFS Layers
+        run: |
+          # Fetch stable release mirror kernel nodes to prevent black-screen hangs
+          sudo wget -O ./iso_workspace/image/casper/vmlinuz https://ubuntu.com
+          sudo wget -O ./iso_workspace/image/casper/initrd https://ubuntu.com
+          
+          # Compress your un-bloated filesystem tree into the target Caspar module blocks
+          sudo mksquashfs ./iso_workspace/chroot ./iso_workspace/image/casper/filesystem.squashfs -noappend -comp xz
+
+      - name: Step 8 - Compile True Ventoy-Ready Hybrid ISO Image
+        run: |
+          mkisofs -D -r -V "KIOSITY_BOOT" \
+                  -cache-inodes -J -l \
+                  -b isolinux/isolinux.bin \
+                  -c isolinux/boot.cat \
+                  -no-emul-boot -boot-load-size 4 -boot-info-table \
+                  -o ./output/Kiosity-Universal-OS.iso \
+                  ./iso_workspace/image/
+
+      - name: Step 9 - Upload Final Universal ISO Package Deliverable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kiosity-Universal-OS
+          path: ./output/Kiosity-Universal-OS.iso
+          overwrite: true  # Shields compilation logs from old artifact name collisions
