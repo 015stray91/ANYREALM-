@@ -25,7 +25,22 @@ whose tree still contains the blob.
 recover-deleted.sh origin/015stray91 /tmp/recovered .github/workflows/
 ```
 
-Result: 14 files recovered with real content, 0 unrecoverable.
+Result, stated honestly: **7 useful files**, not 14.
+
+The script writes 14, but that count flatters it:
+
+- 3 (`genevn-duck.yml`, `genevn-g.yml`, `Build-zro-genevn`) were never missing —
+  they exist on `main`, just not on the default branch, so recovering them from
+  history restored nothing.
+- 2 came back as 0 bytes.
+- 1 (`genevn-vibe.yml`) came back damaged and does not parse.
+- **7 are genuinely absent from both `main` and `015stray91` and usable**:
+  `gki-build.yml`, `gki-build-wk.yml`, `gki-build-clinical.yml`,
+  `kernel-user-git.yml`, `kernel-baseline-test.yml`, `baseline-test.yml`,
+  `build.yml`.
+
+Do not describe this as "14 recovered, nothing lost". Files moved is not work
+restored, and the difference here is half the total.
 
 Recovered and saved to `~/anyrealm-recovered/workflows/` on the VM:
 
@@ -132,6 +147,28 @@ All of it is committed and reachable on GitHub: local `HEAD` `24ec83d3` matches
 bytes — the same size as the working copy. `git status` is clean apart from an
 untracked `local-build.config`. The custom files' mtime is 2026-11-17 13:26,
 which is a checkout time, not an edit time; the content is from earlier commits.
+
+## What is still actually missing
+
+Absent from **both** `main` and `015stray91`, verified with `git cat-file -e` on
+each:
+
+| workflow | recoverable? |
+|---|---|
+| `gki-build.yml` | yes — 45495 bytes |
+| `gki-build-wk.yml` | yes — 31033 bytes |
+| `gki-build-clinical.yml` | yes — 16058 bytes |
+| `kernel-user-git.yml` | yes — 13450 bytes |
+| `kernel-baseline-test.yml` | yes — 14603 bytes |
+| `baseline-test.yml` | yes — 8738 bytes |
+| `build.yml` | yes — 2036 bytes |
+| `genevn-vibe.yml` | **damaged** — content recovered but unparseable |
+
+A sweep of the reachable laptop paths (`home/slm015`, `media/slm015`, the Kubuntu
+`Downloads`, `Documents`, `metadata` and the workflow archive) found no other
+copy of any of these names. `genevn-vibe.yml` therefore needs repair from the
+recovered text, and the others should be restored from
+`~/anyrealm-recovered/workflows/`.
 
 ## The SATA problem
 
