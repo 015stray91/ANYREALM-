@@ -1,7 +1,7 @@
 {
   "name": "anyrealm-builder",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -79,8 +79,19 @@
       "category": "Development",
       "synopsis": "Compose NUKI+NURFS builds and dispatch them to GitHub Actions",
       "description": "A local front end to the AnyRealm pipeline: pick the firmware, kernel, root manager and user space, then dispatch the build and fetch the resulting ISO or kernel zip.",
-      "icon": "desktop/resources/icon.png"
+      "icon": "desktop/resources/icon.png",
+      "syncDesktopName": true
     },
     "fileAssociations": []
-  }
+  },
+  "author": {
+    "name": "AnyRealm",
+    "email": "015stray91@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/015stray91/ANYREALM-",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/015stray91/ANYREALM-.git"
+  },
+  "desktopName": "anyrealm-builder.desktop"
 }

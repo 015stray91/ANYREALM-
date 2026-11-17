@@ -15,3 +15,8 @@ test-results/
 *.jks
 *.keystore
 keystore.properties
+
+# Electron packaging output: the AppImage alone is ~150 MB, far past what the
+# workspace should carry. CI builds it; it is never committed.
+release/
+linux-unpacked/

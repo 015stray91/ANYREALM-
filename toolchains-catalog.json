@@ -136,7 +136,7 @@
       "category": "gcc",
       "categoryLabel": "C / C++ (GCC)",
       "language": "C/C++",
-      "kernel_safe": true
+      "kernel_safe": false
     },
     {
       "id": "GOAT-Plugs",
@@ -159,7 +159,7 @@
       "category": "gcc",
       "categoryLabel": "C / C++ (GCC)",
       "language": "C/C++",
-      "kernel_safe": true
+      "kernel_safe": false
     },
     {
       "id": "toolchain-arm",
@@ -797,6 +797,263 @@
       "category": "obf-other",
       "categoryLabel": "Other obfuscators",
       "language": "C",
+      "kernel_safe": false
+    },
+    {
+      "id": "rust-llvm-plugin",
+      "name": "Rust LLVM plugin host",
+      "repo": "llvm-plugin-rs",
+      "url": "https://github.com/015stray91/llvm-plugin-rs",
+      "branch": "master",
+      "cc": "cargo",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Rust bindings for writing LLVM passes. Useful for a userspace pass, and the honest reason it is catalogued: it shows a Rust toolchain is present, not that it can build a kernel.",
+      "bins": [
+        "target/release/libllvm_plugin.so"
+      ],
+      "category": "rust",
+      "categoryLabel": "Rust",
+      "language": "Rust",
+      "kernel_safe": false
+    },
+    {
+      "id": "hikarust",
+      "name": "Hikarust",
+      "repo": "Hikarust",
+      "url": "https://github.com/015stray91/Hikarust",
+      "branch": "main",
+      "cc": "cargo",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Hikari LLVM rewritten with a Rust-facing build. A C++/LLVM toolchain with Rust tooling around it, which is why it is listed here and not as a kernel-safe chain.",
+      "bins": [
+        "target/release"
+      ],
+      "category": "rust",
+      "categoryLabel": "Rust",
+      "language": "Rust/C++",
+      "kernel_safe": false
+    },
+    {
+      "id": "go-protobuf",
+      "name": "Go protobuf (AOSP external)",
+      "repo": "external-golang-protobuf",
+      "url": "https://github.com/015stray91/external-golang-protobuf",
+      "branch": "android-12-release-s3rde32.123-37-1",
+      "cc": "go",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Go host tool from the AOSP tree. Host stage only: it generates code for the build, it does not compile anything that ships.",
+      "bins": [
+        "bin/protoc-gen-go"
+      ],
+      "category": "go",
+      "categoryLabel": "Go",
+      "language": "Go",
+      "kernel_safe": false
+    },
+    {
+      "id": "go-cmp",
+      "name": "Go cmp (AOSP external)",
+      "repo": "external-go-cmp",
+      "url": "https://github.com/015stray91/external-go-cmp",
+      "branch": "android-14-release-u1tr34.8-30-13",
+      "cc": "go",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Dependency of the Go host tools above. Catalogued separately because its branch tracks a different Android release, so pinning one does not pin the other.",
+      "bins": [
+        "."
+      ],
+      "category": "go",
+      "categoryLabel": "Go",
+      "language": "Go",
+      "kernel_safe": false
+    },
+    {
+      "id": "kotlinc",
+      "name": "Kotlin compiler",
+      "repo": "external-kotlinc",
+      "url": "https://github.com/015stray91/external-kotlinc",
+      "branch": "pie-9.0.0-release-b",
+      "cc": "kotlinc",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "AOSP's in-tree Kotlin compiler, on the pie-era branch. The system stage is where it applies: Kotlin becomes Java bytecode, which is dexed, never compiled to machine code.",
+      "bins": [
+        "bin/kotlinc"
+      ],
+      "category": "jvm",
+      "categoryLabel": "Java / Kotlin (JVM)",
+      "language": "Kotlin",
+      "kernel_safe": false
+    },
+    {
+      "id": "jdiff",
+      "name": "jdiff",
+      "repo": "external-jdiff",
+      "url": "https://github.com/015stray91/external-jdiff",
+      "branch": "android-10-release",
+      "cc": "java",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "API-diff tool for the framework. Host stage: it compares two builds' public API, which is how a system image change gets caught before it ships.",
+      "bins": [
+        "jdiff.jar"
+      ],
+      "category": "jvm",
+      "categoryLabel": "Java / Kotlin (JVM)",
+      "language": "Java",
+      "kernel_safe": false
+    },
+    {
+      "id": "python-absl",
+      "name": "absl-py (AOSP external)",
+      "repo": "kernel-external-python-absl-py",
+      "url": "https://github.com/015stray91/kernel-external-python-absl-py",
+      "branch": "android-16-release-w2wv36.55-25-15",
+      "cc": "python3",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Python support library used by kernel and platform build scripts. It is a library, not a compiler: it belongs to whichever stage's scripts import it.",
+      "bins": [
+        "."
+      ],
+      "category": "python",
+      "categoryLabel": "Python",
+      "language": "Python",
+      "kernel_safe": false
+    },
+    {
+      "id": "clang-tools-static",
+      "name": "clang-tools static binaries",
+      "repo": "clang-tools-static-binaries",
+      "url": "https://github.com/015stray91/clang-tools-static-binaries",
+      "branch": "master",
+      "cc": "python3",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Wrapper that fetches static clang tools; the repo itself is Python, which is why it sits in this family rather than with the compilers it downloads.",
+      "bins": [
+        "."
+      ],
+      "category": "python",
+      "categoryLabel": "Python",
+      "language": "Python/C++",
+      "kernel_safe": false
+    },
+    {
+      "id": "busybox-brutal",
+      "name": "Brutal busybox",
+      "repo": "Brutal_busybox",
+      "url": "https://github.com/015stray91/Brutal_busybox",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "aarch64",
+        "arm",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "The shell the initramfs and recovery actually run. Static, so the fused root does not need a matching libc for it.",
+      "bins": [
+        "busybox"
+      ],
+      "category": "shell",
+      "categoryLabel": "Shell (ash / bash / busybox)",
+      "language": "C",
+      "kernel_safe": false
+    },
+    {
+      "id": "busybox-nethunter",
+      "name": "Kali NetHunter busybox",
+      "repo": "Kali-Nethunter-Busybox",
+      "url": "https://github.com/015stray91/Kali-Nethunter-Busybox",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "aarch64",
+        "arm"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "NetHunter's applet set. A different busybox from the one above: different applets, different version, and scripts written for one can fail on the other.",
+      "bins": [
+        "busybox"
+      ],
+      "category": "shell",
+      "categoryLabel": "Shell (ash / bash / busybox)",
+      "language": "C",
+      "kernel_safe": false
+    },
+    {
+      "id": "keystone",
+      "name": "Keystone assembler",
+      "repo": "keystone",
+      "url": "https://github.com/015stray91/keystone",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "aarch64",
+        "arm",
+        "x86_64"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "Assembler framework for kernel entry stubs and for writing test sequences against vendor code.",
+      "bins": [
+        "build/llvm/bin/llvm-mc"
+      ],
+      "category": "asm",
+      "categoryLabel": "Assembly / disassembly",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "dotnet-obfuscation",
+      "name": "dotnet-obfuscation (third party)",
+      "repo": "BerkaySevinc/dotnet-obfuscation",
+      "url": "https://github.com/BerkaySevinc/dotnet-obfuscation",
+      "branch": "master",
+      "cc": "dotnet",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Third-party .NET obfuscator, kept in the obfuscation family. It is not ours and it is not a compiler for anything this build ships; it is catalogued so a userspace .NET tool can be obfuscated, and refused for every kernel role.",
+      "bins": [
+        "."
+      ],
+      "category": "dotnet",
+      "categoryLabel": ".NET / C#",
+      "language": "C#",
       "kernel_safe": false
     }
   ],
@@ -1669,6 +1926,62 @@
       "language": "C",
       "kernelSafe": false,
       "count": 3
+    },
+    {
+      "id": "rust",
+      "label": "Rust",
+      "language": "Rust",
+      "kernelSafe": true,
+      "note": "Rust compiles into the system image and into the bootloader; a kernel-side Rust module needs the kernel's own rustc, so this is not offered for the kernel stage.",
+      "count": 2
+    },
+    {
+      "id": "go",
+      "label": "Go",
+      "language": "Go",
+      "kernelSafe": false,
+      "note": "Go is a host-tool language here: the build's own helpers are written in it. It is never a kernel compiler.",
+      "count": 2
+    },
+    {
+      "id": "jvm",
+      "label": "Java / Kotlin (JVM)",
+      "language": "Java/Kotlin",
+      "kernelSafe": false,
+      "note": "The Android framework is Java, and Kotlin is Java bytecode. These tools compile and dex the system image; they cannot produce kernel code.",
+      "count": 2
+    },
+    {
+      "id": "dotnet",
+      "label": ".NET / C#",
+      "language": "C#",
+      "kernelSafe": false,
+      "note": "Relevant to userspace tooling and to obfuscating it. Nothing in a NUKI kernel or an Android system image is .NET, so it is a host/userspace-only family.",
+      "count": 1
+    },
+    {
+      "id": "python",
+      "label": "Python",
+      "language": "Python",
+      "kernelSafe": false,
+      "note": "Build scripts, firmware extraction and packaging. Present in every stage as glue, never as a compiler for shipped code.",
+      "count": 2
+    },
+    {
+      "id": "shell",
+      "label": "Shell (ash / bash / busybox)",
+      "language": "Shell",
+      "kernelSafe": false,
+      "note": "The initramfs and recovery run on shell. The choice of shell implementation is a real decision: busybox ash is not bash, and a script that uses bashisms fails at boot, not at build time.",
+      "count": 2
+    },
+    {
+      "id": "asm",
+      "label": "Assembly / disassembly",
+      "language": "Assembly",
+      "kernelSafe": true,
+      "note": "Assemblers and disassemblers for the kernel's entry code and for reading vendor blobs.",
+      "count": 1
     }
   ],
   "stages": [
@@ -1678,14 +1991,17 @@
       "languages": [
         "C",
         "assembly",
-        "Rust"
+        "Rust",
+        "C++"
       ],
       "romPart": "U-Boot, edk2, the UEFI ESP and its stub",
       "kernelCode": true,
       "allowedCategories": [
         "clang",
         "gcc",
-        "llvm"
+        "llvm",
+        "rust",
+        "asm"
       ],
       "why": "Boot code runs before any runtime exists. A miscompile is an unbootable machine, so this stage takes a plain compiler only."
     },
@@ -1697,7 +2013,11 @@
         "C++",
         "Python",
         "Rust",
-        "Go"
+        "Go",
+        "Kotlin",
+        "Java",
+        "C#",
+        "Shell"
       ],
       "romPart": "soong/mkbootimage, dtc, lpmake, build scripts",
       "kernelCode": false,
@@ -1706,7 +2026,12 @@
         "gcc",
         "llvm",
         "cpp",
-        "llvm-vendor"
+        "llvm-vendor",
+        "rust",
+        "go",
+        "python",
+        "jvm",
+        "dotnet"
       ],
       "why": "Runs on the runner, not the device. Version freedom is highest here."
     },
@@ -1723,7 +2048,8 @@
         "clang",
         "gcc",
         "llvm",
-        "llvm-vendor"
+        "llvm-vendor",
+        "asm"
       ],
       "why": "Must match the compiler the tree was tested against. Obfuscation here does not fail to compile, it boot-loops."
     },
@@ -1736,7 +2062,8 @@
         "Java",
         "Kotlin",
         "Rust",
-        "Go"
+        "Go",
+        "Shell"
       ],
       "romPart": "bionic, the framework, apps, the fused Linux user space",
       "kernelCode": false,
@@ -1748,7 +2075,12 @@
         "cpp",
         "llvm-obf",
         "obf-source",
-        "obf-other"
+        "obf-other",
+        "rust",
+        "jvm",
+        "python",
+        "shell",
+        "asm"
       ],
       "why": "The only stage where obfuscation is safe: a fault kills one process, not the kernel."
     },
@@ -1757,14 +2089,18 @@
       "label": "Recovery",
       "languages": [
         "C",
-        "C++"
+        "C++",
+        "Shell",
+        "assembly"
       ],
       "romPart": "TWRP/orangefox recovery and its kernel",
       "kernelCode": true,
       "allowedCategories": [
         "clang",
         "gcc",
-        "llvm"
+        "llvm",
+        "shell",
+        "asm"
       ],
       "why": "Recovery bundles a kernel, so it inherits the kernel rule."
     },
@@ -1774,7 +2110,8 @@
       "languages": [
         "C",
         "C++",
-        "Hexagon assembly"
+        "Hexagon assembly",
+        "Rust"
       ],
       "romPart": "camera, audio, modem and Hexagon DSP blobs and HALs",
       "kernelCode": false,
@@ -1782,7 +2119,9 @@
         "clang",
         "gcc",
         "llvm",
-        "llvm-vendor"
+        "llvm-vendor",
+        "rust",
+        "asm"
       ],
       "why": "Vendor LLVM (SDCLang, cpullvm) is tuned for these cores and is the normal choice."
     }
