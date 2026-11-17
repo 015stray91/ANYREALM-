@@ -53,6 +53,10 @@ PKGS=(
   qemu-system-x86 qemu-utils qemu-user-static
   # debos needs a Debian-ish userland toolset inside the image it builds.
   debootstrap fakeroot fakechroot
+  # debos' own build dependencies, from its Dockerfile: its ostree binding is
+  # cgo and shells out to pkg-config, so without these `go install` fails with
+  # `pkg-config: executable file not found` rather than anything about debos.
+  pkg-config libglib2.0-dev libostree-dev
   # Cross toolchain: the mobile target is arm64 and this host is x86_64.
   gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
   # Kernel build prerequisites.
@@ -120,18 +124,26 @@ export PATH="$HOME/.bun/bin:$PATH"
 #    must survive goes under $HOME.
 # ---------------------------------------------------------------------------
 say "Scratch"
+# The Dsv4 shape is advertised with an ephemeral NVMe at /mnt, but on this VM /mnt
+# is an ordinary directory on the OS disk: lsblk shows only sda. Writing build
+# intermediates to a plain /mnt would look like fast local storage while actually
+# consuming the disk that has to hold the artefacts, so the fallback is explicit.
 if mountpoint -q "$SCRATCH"; then
   echo "  $SCRATCH is a separate filesystem: $(df -h "$SCRATCH" | awk 'NR==2{print $4" free"}')"
   echo "  NOTE: ephemeral. Everything here is lost on deallocation."
-  mkdir -p "$SCRATCH/anyrealm"
-  # A marker so a later run can tell "empty because fresh" from "emptied".
-  printf 'AnyRealm build scratch. Ephemeral; wiped on VM deallocation.\n' \
-    > "$SCRATCH/anyrealm/.anyrealm-scratch"
+  SCRATCH_DIR="$SCRATCH/anyrealm"
 else
-  echo "  $SCRATCH is not a separate mount; build intermediates will land on /"
-  echo "  Set ANYREALM_SCRATCH to a faster mount if one exists."
-  mkdir -p "$SCRATCH/anyrealm"
+  SCRATCH_DIR="$HOME/.anyrealm/scratch"
+  echo "  no separate scratch filesystem (checked /mnt, $SCRATCH)"
+  echo "  using $SCRATCH_DIR on the OS disk"
+  echo "  NOTE: the OS disk must hold intermediates and artefacts at once, so"
+  echo "  clean build output between compositions."
 fi
+mkdir -p "$SCRATCH_DIR"
+printf 'AnyRealm build scratch. Safe to delete when no build is running.\n' \
+  > "$SCRATCH_DIR/.anyrealm-scratch"
+echo "  scratch  $SCRATCH_DIR"
+export ANYREALM_SCRATCH_DIR="$SCRATCH_DIR"
 mkdir -p "$HOME/.anyrealm"/{artefacts,firmware,rootfs}
 echo "  persistent artefacts: $HOME/.anyrealm/artefacts"
 
@@ -225,7 +237,6 @@ Next, in order:
        cd ~/ANYREALM- && PORT=3000 bun server.ts
      Port 3000 is already open on this VM.
 
-  3. Set the build root to the fast disk so intermediates do not fill the OS
-     disk:
-       export ANYREALM_DATA_DIR=$HOME/.anyrealm
+  3. Keep intermediates off the artefact path:
+       export ANYREALM_SCRATCH_DIR=${ANYREALM_SCRATCH_DIR:-$HOME/.anyrealm/scratch}
 EOF

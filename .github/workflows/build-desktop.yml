@@ -32,17 +32,21 @@ concurrency:
 jobs:
   linux:
     name: AppImage and deb
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Self-hosted, on the project's own build VM. The steps below are unchanged
+    # from the GitHub-hosted version; only where they run has moved. The runner
+    # is registered as a systemd service, so it survives a disconnect.
+    runs-on: [self-hosted, anyrealm-vm]
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
-      # The repo's lockfile is bun.lock, so CI uses Bun too. Adding a second
-      # lockfile would mean two dependency sets that can drift, and the one CI
-      # used would not be the one a developer used.
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      # Bun is installed on the VM by scripts/vm-bootstrap.sh rather than fetched
+      # per run: a setup step here would download the same binary on every build
+      # and the VM already has it pinned.
+      - name: Show toolchain
+        run: |
+          bun --version
+          node --version 2>/dev/null || true
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
