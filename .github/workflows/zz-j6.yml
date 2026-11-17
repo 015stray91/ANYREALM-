@@ -1,8 +1,0 @@
-name: j6
-on: workflow_dispatch
-jobs:
-  apk:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo j4

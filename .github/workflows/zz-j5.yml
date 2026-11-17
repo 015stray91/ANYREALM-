@@ -1,9 +1,0 @@
-name: j5
-on: workflow_dispatch
-permissions:
-  contents: read
-jobs:
-  apk:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo j5
