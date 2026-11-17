@@ -360,10 +360,14 @@ export function chainRefusal(spec: BuildSpec): string | null {
     compiled.add("host");
   }
   if (spec.edition === "desktop_iso") {
-    compiled.add("kernel");
-    compiled.add("bootloader");
-    compiled.add("host");
-    compiled.add("system");
+    // Nothing is compiled here at all, so no obfuscator can reach compiled code.
+    // bodyForDesktopIso() debootstraps a distro, takes that distro's own
+    // /casper/vmlinuz, and runs only mksquashfs, grub-mkstandalone and xorriso --
+    // all prebuilt host tools. Listing kernel, bootloader or system as "compiled"
+    // refused safe user-space-only choices.
+    //
+    // The distro's own packages are built by its maintainers, not by this
+    // workflow, so a chain choice cannot reach them either.
   }
 
   // Only roles the build actually reaches can veto it. Selecting an obfuscator
@@ -435,6 +439,16 @@ export interface CatalogAddon {
    */
   requires?: string;
   /**
+   * Where this tool may already exist on a self-hosted runner, relative to
+   * $HOME. When set, the step links the local tree into addons/<id> instead of
+   * cloning it, and falls back to the clone only if the path is absent.
+   *
+   * This exists because some toolchains cannot be fetched at all: a licensed
+   * Tigress tree is a downloaded, unpacked directory, not a git dependency. On
+   * the VM they are pushed to ~/toolchains by send-toolchains.sh.
+   */
+  localPath?: string;
+  /**
    * False for a tool that is fetched to be *run*, not applied to the tree.
    * kpatch is the case that matters: it is a build tool that emits a livepatch,
    * so running it through the kernel-patch step would print "treating kpatch as
@@ -469,6 +483,7 @@ function addonCatalog(): Record<string, CatalogAddon> {
         /** Same boundary problem as `requires` below: a field not declared in
          *  this cast never reaches the returned object. */
         applyToKernel?: boolean;
+        localPath?: string;
       }>;
     };
     for (const t of doc.tools ?? []) {
@@ -481,6 +496,7 @@ function addonCatalog(): Record<string, CatalogAddon> {
         kind: t.kind,
         stage: asStage(t.stage),
         applyToKernel: t.applyToKernel,
+        localPath: t.localPath,
       };
     }
   } catch {
@@ -655,6 +671,31 @@ function toolAddonSteps(spec: BuildSpec, catalog: Record<string, CatalogAddon>):
   // applying a patch before the tree exists would fail.
   for (const group of grouped) {
     for (const t of group.addons) {
+      // A toolchain that lives on the runner is linked, not cloned. A licensed
+      // Tigress tree is not a git dependency, so `checkout` could never have
+      // worked for it -- and silently cloning some other copy would be worse
+      // than failing, because the build would use the wrong one.
+      if (t.localPath) {
+        const local = `"$HOME/${t.localPath}"`;
+        out.push(
+          `      - name: ${group.stage} addon ${t.name ?? t.id} (local)`,
+          "        run: |",
+          "          set -euo pipefail",
+          `          mkdir -p addons`,
+          `          if [ -e ${local} ]; then`,
+          `            ln -sfn ${local} "addons/${t.id}"`,
+          `            echo "linked addons/${t.id} -> ${t.localPath}"`,
+          "          else",
+          `            echo "::warning::${t.id} is not at ~/${t.localPath}; fetching ${
+            t.repo
+          } instead (this may not be the tree you tested)"`,
+          `            git clone --depth 1${t.branch ? ` --branch ${t.branch}` : ""} "${
+            t.repo.startsWith("/") ? t.repo : `https://github.com/${t.repo}.git`
+          }" "addons/${t.id}"`,
+          "          fi",
+        );
+        continue;
+      }
       out.push(
         `      - name: Fetch ${group.stage} addon ${t.name ?? t.id}`,
         "        uses: actions/checkout@v4",
@@ -1205,6 +1246,11 @@ function bodyForMobileKernel(spec: BuildSpec): string[] {
  * broke the hand-written workflows in Super-Builders).
  */
 export function generateWorkflow(spec: BuildSpec): string {
+  // Every entry point refuses an obfuscated kernel build. This was only checked
+  // in server.ts, so a direct generateWorkflow() call -- which the desktop app
+  // and the tests both make -- would emit one.
+  const obfRefusal = chainRefusal(spec);
+  if (obfRefusal) throw new SpecError(obfRefusal);
   const n = normalizeSpec(spec);
 
   const header = [
@@ -1348,6 +1394,15 @@ export function validateWorkflow(text: string): Validation {
 
 /** Convenience: generate and validate in one call. */
 export function composeWorkflow(spec: BuildSpec): { fileName: string; yaml: string; validation: Validation } {
+  // The obfuscated-kernel refusal belongs here, not in whichever caller happens
+  // to remember it. server.ts checked it and normalizeSpec did not, so
+  // generateWorkflow() would emit a workflow that compiles kernel code through
+  // an obfuscator -- a boot-looping image, not a build error -- for any caller
+  // that reached it directly.
+  const refusal = chainRefusal(spec);
+  if (refusal) {
+    throw new SpecError(refusal);
+  }
   const fileName = workflowFileName(spec);
   const text = generateWorkflow(spec);
   return { fileName, yaml: text, validation: validateWorkflow(text) };
