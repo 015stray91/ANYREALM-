@@ -1,0 +1,36 @@
+# Repositories to place on the build VM, one per line.
+#
+#   <git-url> <target-dir> [branch]
+#
+# Format is deliberately dumb: it is read by vm-bootstrap.sh with `read -r`, so a
+# comment line starting with # is all the structure it needs.
+#
+# These are the repos the builder actually compiles from. The catalog in
+# sources-catalog.json lists upstream projects the builder can *offer*; cloning
+# all 33 of them would pull hundreds of gigabytes of AOSP mirrors that the
+# builder fetches on demand instead. What goes on the VM is the editor's own
+# tree plus the forks the two real targets build against.
+#
+# Anything not listed here is still available to the pipeline: the builder clones
+# it into the build root when a composition asks for it.
+
+# The builder itself. Everything else is reached through it.
+https://github.com/015stray91/ANYREALM-.git ANYREALM- main
+
+# Kernels. These are the only two structures that ship as NUKI, and they never
+# cross: zenith is x86_64 desktop, genevn is arm64 mobile.
+https://github.com/015stray91/AR-NUKI-genevn.git AR-NUKI-genevn
+https://github.com/015stray91/kernel-zenith.git kernel-zenith
+
+# Mobile Linux UX. phosh-ux + phoc + lomiri + lipstick cover every display
+# owner the UX picker offers, and mobian supplies the debos recipes that build
+# the arm64 rootfs.
+https://github.com/015stray91/phosh-ux.git phosh-ux
+https://github.com/015stray91/phoc.git phoc
+https://github.com/015stray91/lomiri.git lomiri
+https://github.com/015stray91/lipstick.git lipstick
+https://github.com/015stray91/mobian.git mobian
+
+# Root manager sources. KernelSU-Next is the default; the shared tree also
+# carries the other variants the picker offers.
+https://github.com/015stray91/Super-Builders.git Super-Builders 015stray91
