@@ -99,14 +99,44 @@ async function startServer() {
   // Wait for the port to accept a connection rather than sleeping a fixed time:
   // bootstrap can take a second on a cold start and a fixed sleep either races it
   // or wastes time.
-  await waitForPort(port, 15000);
+  //
+  // If the wait fails, the server's own output is the only thing that explains
+  // why, so it is attached to the error. Reporting "port did not open" with no
+  // server output is what made this look like a launcher bug when it was a
+  // missing module inside the server.
+  try {
+    await waitForPort(port, 15000, () => serverProc === null);
+  } catch (err) {
+    const tail = log.join("").trim().split("\n").slice(-15).join("\n");
+    const exitNote =
+      serverProc === null
+        ? "The server process had already exited."
+        : "The server process was still running but never listened.";
+    throw new Error(
+      `${err.message}. ${exitNote}\n\n` +
+        (tail
+          ? `Server output:\n${tail}`
+          : "The server produced no output at all, which usually means the binary could not start."),
+    );
+  }
   return port;
 }
 
-function waitForPort(port, timeoutMs) {
+/**
+ * Resolve once `port` accepts a connection.
+ *
+ * `diedEarly` lets the loop stop as soon as the child is gone: without it a server
+ * that crashed immediately is waited on for the full 15 s, so the failure looks
+ * like a hang before it finally reports a timeout.
+ */
+function waitForPort(port, timeoutMs, diedEarly) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const attempt = () => {
+      if (diedEarly && diedEarly()) {
+        reject(new Error(`the server exited before it opened port ${port}`));
+        return;
+      }
       const sock = net.connect(port, "127.0.0.1");
       sock.once("connect", () => {
         sock.destroy();
@@ -114,7 +144,7 @@ function waitForPort(port, timeoutMs) {
       });
       sock.once("error", () => {
         sock.destroy();
-        if (Date.now() > deadline) reject(new Error(`server did not open port ${port}`));
+        if (Date.now() > deadline) reject(new Error(`the server did not open port ${port} within ${timeoutMs / 1000}s`));
         else setTimeout(attempt, 150);
       });
     };
