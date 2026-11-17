@@ -4,7 +4,6 @@ import path from "path";
 import dotenv from "dotenv";
 import { dataFile, dataDirs, allowedRoots as allowedDataRoots, insideAllowed } from "./paths";
 import { GoogleGenAI, Type } from "@google/genai";
-import { createServer as createViteServer } from "vite";
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { exec, execFile } from "child_process";
@@ -2476,6 +2475,11 @@ wss.on("connection", (ws: WebSocket) => {
 async function setupServer() {
   if (process.env.NODE_ENV !== "production") {
     console.log("Setting up Vite server in development mode...");
+    // Imported here, not at the top of the file. A static import becomes a
+    // top-level require in the bundled server, so the packaged desktop app would
+    // load a dev server it never uses -- and if that require fails, the process
+    // dies before it opens the port, which reads as "the app did not start".
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
