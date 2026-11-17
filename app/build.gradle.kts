@@ -78,9 +78,12 @@ android {
         }
     }
 
+    // Java 11 bytecode, built by a JDK 21 toolchain. AGP 9 needs JDK 17+ to run,
+    // but the bytecode target is independent of the JDK running Gradle, and 11 is
+    // what the ABK app ships, so the two apps stay comparable.
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 
     packaging {
@@ -106,7 +109,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
 
     implementation(libs.okhttp)
-    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.gson)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)

@@ -27,18 +27,30 @@ object WatchRules {
         val usable = artifacts.filterNot { it.expired }
         if (usable.isEmpty()) return null
 
-        val pattern = patternFor(edition)
-        if (pattern != null) {
+        // Patterns are tried in priority order, most specific first. A single
+        // alternation is not enough: `logs.zip` also ends in `.zip`, so an edition
+        // whose pattern includes a bare `.zip$` will pick a log bundle over the
+        // kernel archive whenever the log bundle happens to be listed first.
+        for (pattern in patternsFor(edition)) {
             usable.firstOrNull { pattern.containsMatchIn(it.name) }?.let { return it }
         }
         return usable.maxByOrNull { it.sizeInBytes }
     }
 
-    private fun patternFor(edition: String): Regex? = when (edition) {
-        "desktop_iso" -> Regex("(\\.iso$|\\biso\\b)", RegexOption.IGNORE_CASE)
-        "mobile_kernel" -> Regex("(\\.zip$|anykernel|kernel)", RegexOption.IGNORE_CASE)
-        "rom" -> Regex("(\\.zip$|\\brom\\b)", RegexOption.IGNORE_CASE)
-        else -> null
+    private fun patternsFor(edition: String): List<Regex> = when (edition) {
+        "desktop_iso" -> listOf(
+            Regex("\\.iso$", RegexOption.IGNORE_CASE),
+            Regex("\\biso\\b", RegexOption.IGNORE_CASE),
+        )
+        "mobile_kernel" -> listOf(
+            Regex("(anykernel|\\bkernel\\b)", RegexOption.IGNORE_CASE),
+            Regex("\\.zip$", RegexOption.IGNORE_CASE),
+        )
+        "rom" -> listOf(
+            Regex("\\brom\\b", RegexOption.IGNORE_CASE),
+            Regex("\\.zip$", RegexOption.IGNORE_CASE),
+        )
+        else -> emptyList()
     }
 
     /**

@@ -37,19 +37,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
+      # The repo's lockfile is bun.lock, so CI uses Bun too. Adding a second
+      # lockfile would mean two dependency sets that can drift, and the one CI
+      # used would not be the one a developer used.
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: "24"
-          cache: npm
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: bunx tsc --noEmit
 
       - name: Build UI and server
-        run: npm run build
+        run: bun run build
 
       - name: Check the bundled server answers
         run: |
@@ -70,7 +72,7 @@ jobs:
           # electron-builder downloads its own Electron and appimagetool; no signing
           # is configured, so it produces an unsigned AppImage, which is expected.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx electron-builder --linux AppImage deb --publish never
+        run: bunx electron-builder --linux AppImage deb --publish never
 
       - name: List what was produced
         run: ls -lh release/ || true

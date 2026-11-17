@@ -4,10 +4,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonObject
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -32,11 +31,9 @@ import java.util.concurrent.TimeUnit
  */
 class GitHubClient(private val token: String) {
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        explicitNulls = false
-        coerceInputValues = true
-    }
+    // Gson ignores unknown keys by default, which is what this needs: GitHub adds
+    // fields regularly and a strict schema would break on their schedule.
+    private val gson: Gson = GsonBuilder().setLenient().create()
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -64,36 +61,38 @@ class GitHubClient(private val token: String) {
         }
     }
 
+    /** Decode a JSON body, wrapping Gson's unchecked exceptions as IO failures. */
+    private inline fun <reified T> parse(body: String): T = try {
+        gson.fromJson(body, T::class.java)
+            ?: throw IOException("empty or null JSON body (expected ${T::class.simpleName})")
+    } catch (e: com.google.gson.JsonSyntaxException) {
+        throw IOException("malformed JSON from GitHub: ${e.message}. Body began: ${body.take(200)}")
+    }
+
     fun listWorkflows(owner: String, repo: String): List<Workflow> {
-        val page = get("/repos/$owner/$repo/actions/workflows") { body ->
-            json.decodeFromString<WorkflowsPage>(body)
-        }
+        val page: WorkflowsPage = get("/repos/$owner/$repo/actions/workflows") { parse(it) }
         return page.workflows
     }
 
     fun listRuns(owner: String, repo: String, perPage: Int = 20): List<WorkflowRun> {
-        val page = get("/repos/$owner/$repo/actions/runs?per_page=$perPage") { body ->
-            json.decodeFromString<WorkflowRunsPage>(body)
-        }
+        val page: WorkflowRunsPage = get("/repos/$owner/$repo/actions/runs?per_page=$perPage") { parse(it) }
         return page.workflowRuns
     }
 
     fun getRun(owner: String, repo: String, runId: Long): WorkflowRun =
         get("/repos/$owner/$repo/actions/runs/$runId") { body ->
-            json.decodeFromString<WorkflowRun>(body)
+            parse<WorkflowRun>(body).also {
+                if (it.id == 0L) throw IOException("run $runId had no id in the response")
+            }
         }
 
     fun listJobs(owner: String, repo: String, runId: Long): List<Job> {
-        val page = get("/repos/$owner/$repo/actions/runs/$runId/jobs") { body ->
-            json.decodeFromString<JobsPage>(body)
-        }
+        val page: JobsPage = get("/repos/$owner/$repo/actions/runs/$runId/jobs") { parse(it) }
         return page.jobs
     }
 
     fun listArtifacts(owner: String, repo: String, runId: Long): List<Artifact> {
-        val page = get("/repos/$owner/$repo/actions/runs/$runId/artifacts") { body ->
-            json.decodeFromString<ArtifactsPage>(body)
-        }
+        val page: ArtifactsPage = get("/repos/$owner/$repo/actions/runs/$runId/artifacts") { parse(it) }
         return page.artifacts
     }
 
@@ -113,10 +112,13 @@ class GitHubClient(private val token: String) {
         inputs: Map<String, String> = emptyMap(),
     ): Dispatched {
         val now = System.currentTimeMillis() / 1000
-        val payload = buildJsonObject {
-            put("ref", ref)
+        val payload = JsonObject().apply {
+            addProperty("ref", ref)
             if (inputs.isNotEmpty()) {
-                put("inputs", JsonObject(inputs.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }))
+                // Inputs are all strings: the workflows this app dispatches declare
+                // string and boolean inputs, and GitHub accepts "true"/"false" for
+                // the booleans. Typed values would need the workflow's own schema.
+                add("inputs", JsonObject().apply { inputs.forEach { (k, v) -> addProperty(k, v) } })
             }
         }
         val req = request("/repos/$owner/$repo/actions/workflows/$workflowFile/dispatches")
@@ -135,11 +137,15 @@ class GitHubClient(private val token: String) {
         val run = try {
             Thread.sleep(1500)
             listRuns(owner, repo, perPage = 10).firstOrNull { r ->
+                // The created-at value is read once into a local: these are mutable
+                // Gson fields, so Kotlin cannot smart-cast them and a second read
+                // could in principle see a different value.
+                val created = r.createdAt
                 r.workflowId != null &&
-                    r.createdAt != null &&
+                    created != null &&
                     (r.name?.isNotBlank() == true) &&
                     runMatchesWorkflow(r, workflowFile) &&
-                    epochOf(r.createdAt) >= now - 5
+                    epochOf(created) >= now - 5
             }
         } catch (_: Exception) {
             null

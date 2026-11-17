@@ -15,8 +15,18 @@ import org.junit.Test
  */
 class WatchRulesTest {
 
-    private fun art(name: String, size: Long = 1_000, expired: Boolean = false) =
-        Artifact(id = name.hashCode().toLong(), name = name, sizeInBytes = size, expired = expired)
+    /**
+     * Build an artefact. The models are mutable Gson classes with no constructor
+     * parameters, so this sets fields rather than using named arguments -- which is
+     * also why the model classes cannot be `data class` and compared by value.
+     */
+    private fun art(name: String, size: Long = 1_000, expired: Boolean = false): Artifact =
+        Artifact().apply {
+            id = name.hashCode().toLong()
+            this.name = name
+            sizeInBytes = size
+            this.expired = expired
+        }
 
     @Test
     fun `completed with failure is not success`() {
@@ -84,11 +94,12 @@ class WatchRulesTest {
 
     @Test
     fun `progress never reports a finished bar before finishing`() {
-        val jobs = listOf(
-            Job(id = 1, steps = listOf(JobStep(status = "completed"), JobStep(status = "in_progress"))),
-        )
+        fun step(status: String) = JobStep().apply { this.status = status }
+        fun job(vararg st: String) = Job().apply { id = 1; steps = st.map(::step) }
+
+        val jobs = listOf(job("completed", "in_progress"))
         assertEquals(50, WatchRules.progress(RunPhase.Running, jobs))
-        assertEquals(99, WatchRules.progress(RunPhase.Running, listOf(Job(1, steps = listOf(JobStep(status = "completed"))))))
+        assertEquals(99, WatchRules.progress(RunPhase.Running, listOf(job("completed"))))
         assertEquals(100, WatchRules.progress(RunPhase.Succeeded, jobs))
         assertEquals(0, WatchRules.progress(RunPhase.Queued, jobs))
     }

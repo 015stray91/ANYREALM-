@@ -40,18 +40,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up JDK 17
+      # AGP 9 needs a JDK 17+ toolchain to run Gradle itself; 21 is what the ABK app
+      # builds with on the same AGP line, so this follows the known-good pair rather
+      # than the floor. The compiled bytecode target is Java 11 either way.
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           # 9.3.1 is the wrapper's own version; setup-gradle reads it from the
           # properties file, so the cache key follows an upgrade automatically.
-          cache-read-only: false
+          gradle-version: "9.3.1"
 
       - name: Decode the release keystore, when one is configured
         id: keystore
