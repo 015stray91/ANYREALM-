@@ -26,11 +26,17 @@ import {
   Users,
   Wrench,
   Settings,
-  Boxes
+  Boxes,
+  Radio,
+  GitFork,
+  Upload
 } from 'lucide-react';
 import AospArchitect from './components/AospArchitect';
 import ModuleVectorSettingsPanel from './components/ModuleVectorSettingsPanel';
 import RootfsFuser from './components/RootfsFuser';
+import SourceSync from './components/SourceSync';
+import ComposeDispatch from './components/ComposeDispatch';
+import FirmwareUploader from './components/FirmwareUploader';
 import AospCodeStudio from './components/AospCodeStudio';
 import DeveloperConsole from './components/DeveloperConsole';
 import SuperPartitionStudio from './components/SuperPartitionStudio';
@@ -156,7 +162,7 @@ export default function App() {
     });
   };
 
-  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector' | 'experimental' | 'toolchains'>('architect');
+  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector' | 'experimental' | 'toolchains' | 'sources' | 'compose' | 'firmware_upload'>('architect');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [isRefactoringCode, setIsRefactoringCode] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
@@ -342,6 +348,45 @@ export default function App() {
             >
               <Layers className="w-3.5 h-3.5" />
               Architect Studio
+            </button>
+
+            <button
+              onClick={() => setActiveTab('sources')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'sources'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-upstream-sources"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              Upstream Sources
+            </button>
+
+            <button
+              onClick={() => setActiveTab('firmware_upload')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'firmware_upload'
+                  ? 'bg-gradient-to-r from-cyan-500 to-teal-600 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-firmware-uploader"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Firmware Uploader
+            </button>
+
+            <button
+              onClick={() => setActiveTab('compose')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'compose'
+                  ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-compose-dispatch"
+            >
+              <GitFork className="w-3.5 h-3.5" />
+              Compose &amp; Dispatch
             </button>
 
             <button
@@ -545,6 +590,15 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'sources' && (
+            <SourceSync />
+          )}
+          {activeTab === 'compose' && (
+            <ComposeDispatch />
+          )}
+          {activeTab === 'firmware_upload' && (
+            <FirmwareUploader />
+          )}
           {activeTab === 'fuser' && (
             <RootfsFuser />
           )}

@@ -1,0 +1,717 @@
+{
+  "_note": "Upstream source repositories AnyRealm builds from. Every remote here was verified with `git ls-remote` and is re-checked live at runtime by /api/sources/probe, so this file is a seed, not a frozen truth. A source is listed only with the artifact it actually produces.",
+  "_checked": "2026-11-17",
+  "kinds": {
+    "rom": "Android custom ROM source tree. Produces system/vendor/product images plus a boot image, i.e. an installable ROM zip or a super image.",
+    "mobile_linux": "Mobile Linux distribution source or recipes. Produces an arm64 rootfs and a boot artifact.",
+    "desktop_linux": "Desktop Linux distribution source or installer/ISO builder. Produces an x86_64 rootfs and kernel for a NUKI/NURFS ISO.",
+    "kernel": "Kernel tree only. Produces Image/Image.lz4 or bzImage plus modules.",
+    "desktop_env": "Desktop environment or shell. Not a distro: an addon layer merged into a desktop rootfs, e.g. GNOME or Plasma on top of Debian.",
+    "rom_x86": "Android custom ROM or reference tree built for x86_64. This is the only thing that can supply the Android half of the desktop ISO, because that half must run on the Vivobook's x86_64 CPU, not on ARM."
+  },
+  "sources": [
+    {
+      "id": "lineageos",
+      "name": "LineageOS",
+      "kind": "rom",
+      "url": "https://github.com/LineageOS/android",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64",
+        "arm",
+        "x86_64"
+      ],
+      "note": "Broadest device support of the custom ROMs. Per-device trees live under android_device_<vendor>_<device>.",
+      "build_hint": "repo init -u https://github.com/LineageOS/android.git -b lineage-24.0 && repo sync -c -j8"
+    },
+    {
+      "id": "evolutionx",
+      "name": "Evolution X",
+      "kind": "rom",
+      "url": "https://github.com/Evolution-X/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "Manifest repo. Clone it, then repo sync pulls the tree. Default branch moves (currently cnb).",
+      "build_hint": "repo init -u https://github.com/Evolution-X/manifest -b vic && repo sync -c -j8"
+    },
+    {
+      "id": "elixir",
+      "name": "Project Elixir",
+      "kind": "rom",
+      "url": "https://github.com/Project-Elixir/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "Manifest repo. Branches are codenamed (Tiramisu, UNO, snow, vany) rather than version-numbered.",
+      "build_hint": "repo init -u https://github.com/Project-Elixir/manifest -b UNO && repo sync -c -j8"
+    },
+    {
+      "id": "derpfest",
+      "name": "DerpFest",
+      "kind": "rom",
+      "url": "https://github.com/DerpFest-AOSP/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "Manifest repo. Version branches such as 15.2.",
+      "build_hint": "repo init -u https://github.com/DerpFest-AOSP/manifest -b 15.2 && repo sync -c -j8"
+    },
+    {
+      "id": "crdroid",
+      "name": "crDroid",
+      "kind": "rom",
+      "url": "https://github.com/crdroidandroid/android",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64",
+        "x86_64"
+      ],
+      "note": "LineageOS-based with extra UI work. Device trees mirror LineageOS naming.",
+      "build_hint": "repo init -u https://github.com/crdroidandroid/android.git -b 17.0 && repo sync -c -j8"
+    },
+    {
+      "id": "pixelos",
+      "name": "PixelOS",
+      "kind": "rom",
+      "url": "https://github.com/PixelOS-AOSP/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "Pixel-flavoured AOSP. Device trees are PixelOS-Devices/*.",
+      "build_hint": "repo init -u https://github.com/PixelOS-AOSP/manifest.git -b fifteen && repo sync -c -j8"
+    },
+    {
+      "id": "aosp",
+      "name": "AOSP (upstream)",
+      "kind": "rom",
+      "url": "https://android.googlesource.com/platform/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64",
+        "x86_64"
+      ],
+      "note": "The reference tree the ROMs fork. No vendor HALs, so it targets emulators and reference boards.",
+      "build_hint": "repo init -u https://android.googlesource.com/platform/manifest -b android-15.0.0_r1 && repo sync -c -j8"
+    },
+    {
+      "id": "sailfish",
+      "name": "Sailfish OS",
+      "kind": "mobile_linux",
+      "url": "https://github.com/sailfishos/mer-kickstarter-configs",
+      "license": "BSD-3-Clause",
+      "arch": [
+        "arm64",
+        "arm"
+      ],
+      "note": "Mer-core kickstart configs, the buildable entry point. The Mer core itself is mirrored per-package under github.com/sailfishos/*; git.sailfishos.org redirects and cannot be cloned anonymously.",
+      "build_hint": "mic build --ks <kickstart>.ks  (mic = Mer image creator)"
+    },
+    {
+      "id": "mobian",
+      "name": "Mobian",
+      "kind": "mobile_linux",
+      "url": "https://salsa.debian.org/Mobian-team/mobian-recipes",
+      "license": "GPL-2.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "Debian-based mobile. Recipes are debos YAML, so they produce an arm64 rootfs image directly.",
+      "build_hint": "git clone https://salsa.debian.org/Mobian-team/mobian-recipes && debos mobian.yaml"
+    },
+    {
+      "id": "neon",
+      "name": "KDE neon",
+      "kind": "mobile_linux",
+      "url": "https://invent.kde.org/neon/ubuntu-core",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "Ubuntu core plus rolling KDE packages. The recipes repo (neon/neon-recipes) requires auth, but ubuntu-core is the buildable base and plasma-mobile is in the addons below.",
+      "build_hint": "git clone https://invent.kde.org/neon/ubuntu-core.git && see its docker-images recipes"
+    },
+    {
+      "id": "ubports",
+      "name": "Ubuntu Touch (UBports)",
+      "kind": "mobile_linux",
+      "url": "https://github.com/ubports/ubuntu-touch",
+      "license": "GPL-3.0",
+      "arch": [
+        "arm64",
+        "arm"
+      ],
+      "note": "Lomiri user space on an Android-derived HAL. Whole-system rebuild, not a rootfs drop-in.",
+      "build_hint": "ubports-installer for images; source builds go through the UBports CI recipes"
+    },
+    {
+      "id": "kali-nethunter-pro",
+      "name": "Kali NetHunter Pro",
+      "kind": "mobile_linux",
+      "url": "https://gitlab.com/kalilinux/nethunter/build-scripts/kali-nethunter-pro",
+      "license": "GPL-2.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "Full Kali image for phones and ARM laptops, not a layered-over-Android install. This is the user space the desktop ISO merges.",
+      "build_hint": "prebuilt images published by Kali; source builds use the arm-image recipes"
+    },
+    {
+      "id": "kali-nethunter",
+      "name": "Kali NetHunter (layered)",
+      "kind": "mobile_linux",
+      "url": "https://github.com/offensive-security/kali-nethunter",
+      "license": "GPL-2.0",
+      "arch": [
+        "arm64",
+        "arm"
+      ],
+      "note": "Kali user space layered over an existing Android install. GitHub mirror: the GitLab path needs auth.",
+      "build_hint": "clone, then run the device-specific kernel-builder and rootfs scripts"
+    },
+    {
+      "id": "postmarketos",
+      "name": "postmarketOS",
+      "kind": "mobile_linux",
+      "url": "https://gitlab.com/postmarketOS/pmaports",
+      "license": "GPL-2.0",
+      "arch": [
+        "arm64",
+        "x86_64"
+      ],
+      "note": "Alpine-based. pmaports holds device packages; pmbootstrap builds the rootfs.",
+      "build_hint": "git clone https://gitlab.com/postmarketOS/pmaports && pmbootstrap init"
+    },
+    {
+      "id": "droidian",
+      "name": "Droidian",
+      "kind": "mobile_linux",
+      "url": "https://github.com/droidian/droidian",
+      "license": "GPL-3.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "Debian user space on an Android vendor/kernel base. Structurally the closest upstream analogue to NUKI/NURFS.",
+      "build_hint": "see droidian-recipes; needs an Android device tree for the vendor half"
+    },
+    {
+      "id": "ubuntu",
+      "name": "Ubuntu",
+      "kind": "desktop_linux",
+      "url": "https://git.launchpad.net/ubuntu/+source/debian-installer",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "Installer source. The rootfs itself comes from debootstrap or live-build.",
+      "build_hint": "debootstrap --variant=minbase noble <root> http://archive.ubuntu.com/ubuntu"
+    },
+    {
+      "id": "debian-installer",
+      "name": "Debian",
+      "kind": "desktop_linux",
+      "url": "https://salsa.debian.org/installer-team/debian-installer",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "Installer source. Rootfs from debootstrap; this repo is the ISO and installer half.",
+      "build_hint": "debootstrap --variant=minbase trixie <root> http://deb.debian.org/debian"
+    },
+    {
+      "id": "archiso",
+      "name": "Arch Linux (archiso)",
+      "kind": "desktop_linux",
+      "url": "https://gitlab.archlinux.org/archlinux/archiso",
+      "license": "GPL-3.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Profile-driven ISO builder. Produces a bootable x86_64 ISO directly, so it merges well.",
+      "build_hint": "mkarchiso -v -w work -o out /usr/share/archiso/configs/releng"
+    },
+    {
+      "id": "fedora-kickstarts",
+      "name": "Fedora",
+      "kind": "desktop_linux",
+      "url": "https://pagure.io/fedora-kickstarts.git",
+      "license": "MIT",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "Kickstarts drive livemedia-creator and lorax. The bare pagure path serves HTML; the .git remote is the real one.",
+      "build_hint": "livemedia-creator --ks fedora-live.ks --make-iso"
+    },
+    {
+      "id": "opensuse-kiwi",
+      "name": "openSUSE (KIWI)",
+      "kind": "desktop_linux",
+      "url": "https://github.com/OSInside/kiwi",
+      "license": "GPL-3.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "KIWI image builder, which both openSUSE and SUSE use to produce ISOs and appliances.",
+      "build_hint": "kiwi-ng system build --description <desc> --target-dir out"
+    },
+    {
+      "id": "void-mklive",
+      "name": "Void Linux",
+      "kind": "desktop_linux",
+      "url": "https://github.com/void-linux/void-mklive",
+      "license": "GPL-3.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "mklive produces both live ISOs and rootfs tarballs; musl or glibc, selectable.",
+      "build_hint": "./mklive.sh -a x86_64 -o void.iso"
+    },
+    {
+      "id": "gentoo-releng",
+      "name": "Gentoo",
+      "kind": "desktop_linux",
+      "url": "https://anongit.gentoo.org/git/proj/releng.git",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "Release engineering specs that catalyst turns into stages and ISOs.",
+      "build_hint": "catalyst -f <spec>"
+    },
+    {
+      "id": "linuxmint",
+      "name": "Linux Mint",
+      "kind": "desktop_linux",
+      "url": "https://github.com/linuxmint/live-installer",
+      "license": "GPL-3.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Installer used by Mint's Debian edition, plus Mint's Cinnamon stack in the addons.",
+      "build_hint": "build from a Mint/Ubuntu base with live-build"
+    },
+    {
+      "id": "pop-os-iso",
+      "name": "Pop!_OS",
+      "kind": "desktop_linux",
+      "url": "https://github.com/pop-os/iso",
+      "license": "GPL-3.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Ubuntu-based with the COSMIC desktop in the addons. Installer is a Rust rewrite of distinst.",
+      "build_hint": "see the repo's build scripts; needs a Pop/Ubuntu base"
+    },
+    {
+      "id": "alpine-aports",
+      "name": "Alpine Linux",
+      "kind": "desktop_linux",
+      "url": "https://gitlab.alpinelinux.org/alpine/aports",
+      "license": "MIT",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "musl-based, so its libc must be isolated and never fused -- the fusion engine enforces this.",
+      "build_hint": "aports is the package tree; rootfs from alpine-make-rootfs or lbu"
+    },
+    {
+      "id": "ar-nuki-genevn",
+      "name": "AR-NUKI-genevn",
+      "kind": "kernel",
+      "url": "https://github.com/015stray91/AR-NUKI-genevn",
+      "license": "GPL-2.0",
+      "arch": [
+        "arm64"
+      ],
+      "note": "This project's mobile kernel, 5.10.240, Moto G Stylus 5G 2023 (sm6450). Self-sufficient: no build.config glue, SUSFS + ZeroMount + KernelSU-Next in tree.",
+      "build_hint": "make O=out ARCH=arm64 ksu-nh.defconfig && make O=out ARCH=arm64 -j$(nproc)"
+    },
+    {
+      "id": "kernel-zenith",
+      "name": "kernel-zenith",
+      "kind": "kernel",
+      "url": "https://github.com/015stray91/kernel-zenith",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "This project's desktop kernel, 6.12, x86_64. Never cross with the mobile tree.",
+      "build_hint": "make O=out x86_64_defconfig && make O=out -j$(nproc)"
+    },
+    {
+      "id": "aosp-x86_64",
+      "name": "AOSP x86_64",
+      "kind": "rom_x86",
+      "url": "https://android.googlesource.com/platform/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Upstream AOSP built for the aosp_x86_64 lunch target. This is the reference x86_64 Android tree, and it is the one the desktop edition's Android half descends from. No vendor HALs, but the x86_64 target boots in QEMU and on real UEFI hardware.",
+      "build_hint": "repo init -u https://android.googlesource.com/platform/manifest -b android-15.0.0_r1 && repo sync -c -j8 && lunch aosp_x86_64-trunk_staging-userdebug && m"
+    },
+    {
+      "id": "android-x86",
+      "name": "Android-x86",
+      "kind": "rom_x86",
+      "url": "https://github.com/android-x86/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Manifest for the Android-x86 project, the tree DarkMatter Exo 4.7 is built from. IMPORTANT: android-x86.org still tells you to init from git.osdn.net, but OSDN is offline -- that host no longer resolves, so those instructions cannot work. This GitHub manifest is AOSP-only (fetch points at .., one remote) and is usable as an AOSP x86_64 base, not as a full Android-x86 tree.",
+      "build_hint": "repo init -u https://github.com/android-x86/manifest -b master && repo sync -c -j8   # OSDN is dead; see note"
+    },
+    {
+      "id": "bliss-x86",
+      "name": "BlissRoms x86",
+      "kind": "rom_x86",
+      "url": "https://github.com/BlissRoms-x86/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Maintained x86_64 Android fork, the most active of the x86 ROMs still building. Good source for a modern Android half. Branches are codenamed: arcadia-x86 is the current one.",
+      "build_hint": "repo init -u https://github.com/BlissRoms-x86/manifest.git -b arcadia-x86 && repo sync -c -j8"
+    },
+    {
+      "id": "axp-os",
+      "name": "AXP.OS",
+      "kind": "rom_x86",
+      "url": "https://github.com/AXP-OS/manifest",
+      "license": "Apache-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Android-x86 derivative still publishing builds, based on Android 13 (axp-a13). Closest living descendant of the Android-x86 lineage that DarkMatter came from.",
+      "build_hint": "repo init -u https://github.com/AXP-OS/manifest -b axp-a13 && repo sync -c -j8 && lunch aosp_x86_64-userdebug && m"
+    },
+    {
+      "id": "lineageos-tv-x86",
+      "name": "LineageOS TV x86_64",
+      "kind": "rom_x86",
+      "url": "https://github.com/LineageOS-TV-x86/android_device_generic_x86_64_tv",
+      "license": "Apache-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Device tree (not a manifest) for generic x86_64 TV builds on LineageOS 21. Useful as a working x86_64 device tree to pair with a LineageOS manifest when you want lineage's tooling on x86_64.",
+      "build_hint": "clone into device/generic/x86_64_tv against a lineage-21.0 manifest"
+    },
+    {
+      "id": "darkmatter-exo",
+      "name": "DarkMatter Exo 4.7 (prebuilt)",
+      "kind": "rom_x86",
+      "url": "https://archive.org/details/dark-matter-exo-4.7",
+      "license": "Apache-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Prebuilt ISO, not a source tree: 1,268,467,712 bytes, DarkMatter_Exo4.7.iso. This is the deskop edition's base Android half. Listed because the builder's desktop path consumes it directly, and because its MBR is all zeroes (no partition table), which is why the ISO has to be rebuilt with xorriso rather than patched.",
+      "prebuilt": true,
+      "build_hint": "download the ISO; fuse_darkmatter_nh.sh extracts it and rebuilds a hybrid image"
+    }
+  ],
+  "addons": [
+    {
+      "id": "gnome-shell",
+      "name": "GNOME Shell",
+      "kind": "desktop_env",
+      "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "GNOME session. On Debian/Ubuntu usually installed as the gnome metapackage rather than built.",
+      "install": "apt install gnome-shell ubuntu-desktop"
+    },
+    {
+      "id": "plasma-desktop",
+      "name": "KDE Plasma",
+      "kind": "desktop_env",
+      "url": "https://invent.kde.org/plasma/plasma-desktop.git",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "Plasma desktop session.",
+      "install": "apt install kde-plasma-desktop"
+    },
+    {
+      "id": "plasma-mobile",
+      "name": "Plasma Mobile",
+      "kind": "desktop_env",
+      "url": "https://invent.kde.org/plasma/plasma-mobile.git",
+      "license": "GPL-2.0",
+      "arch": [
+        "arm64",
+        "x86_64"
+      ],
+      "note": "Phone-shaped Plasma session, the mobile counterpart to plasma-desktop.",
+      "install": "apt install plasma-mobile"
+    },
+    {
+      "id": "xfce4-session",
+      "name": "Xfce",
+      "kind": "desktop_env",
+      "url": "https://gitlab.xfce.org/xfce/xfce4-session.git",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "Lightweight session, the usual choice for low-RAM laptops such as the Vivobook Go.",
+      "install": "apt install xfce4"
+    },
+    {
+      "id": "cinnamon",
+      "name": "Cinnamon",
+      "kind": "desktop_env",
+      "url": "https://github.com/linuxmint/cinnamon.git",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Mint's session, also packaged in Debian and Fedora.",
+      "install": "apt install cinnamon"
+    },
+    {
+      "id": "budgie-desktop",
+      "name": "Budgie",
+      "kind": "desktop_env",
+      "url": "https://github.com/BuddiesOfBudgie/budgie-desktop.git",
+      "license": "GPL-2.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "GNOME-adjacent session with its own panel.",
+      "install": "apt install budgie-desktop"
+    },
+    {
+      "id": "cosmic-epoch",
+      "name": "COSMIC",
+      "kind": "desktop_env",
+      "url": "https://github.com/pop-os/cosmic-epoch.git",
+      "license": "GPL-3.0",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Pop!_OS's Rust desktop. Wayland-only, so no X11 session.",
+      "install": "apt install cosmic-session"
+    },
+    {
+      "id": "sway",
+      "name": "Sway",
+      "kind": "desktop_env",
+      "url": "https://github.com/swaywm/sway.git",
+      "license": "MIT",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "note": "i3-compatible Wayland tiling compositor. Smallest useful desktop for a fused image.",
+      "install": "apt install sway"
+    },
+    {
+      "id": "hyprland",
+      "name": "Hyprland",
+      "kind": "desktop_env",
+      "url": "https://github.com/hyprwm/Hyprland.git",
+      "license": "BSD-3-Clause",
+      "arch": [
+        "x86_64"
+      ],
+      "note": "Dynamic tiling Wayland compositor. Not in Debian stable, so it needs a newer base.",
+      "install": "see upstream packaging for your distro"
+    },
+    {
+      "id": "glacierui",
+      "name": "Glacier UI",
+      "kind": "desktop_env",
+      "url": "https://github.com/015stray91/GlacierUI",
+      "fork_of": "InfamousVague/GlacierUI",
+      "upstream": "https://github.com/InfamousVague/GlacierUI",
+      "branch": "main",
+      "extra_branches": [
+        "permafrost"
+      ],
+      "license": "MIT",
+      "arch": [
+        "x86_64",
+        "arm64"
+      ],
+      "language": "TypeScript",
+      "language_agnostic": true,
+      "note": "A framework-agnostic UI kit, not a compositor and not a shell. Its value here is packages/spec: it emits spec.json plus a JSON Schema describing components, variants, tokens and geometry, so a native renderer can consume the design without running JavaScript. That makes it the bridge from a TypeScript design system to the fused compositor rather than another display server.",
+      "build_hint": "pnpm install && pnpm --filter @glacier/spec build  # -> packages/spec/dist/spec.json + schema.json",
+      "consumed_by": [
+        "display/nurfs_compositor_core.cpp"
+      ]
+    },
+    {
+      "id": "phosh-ux",
+      "name": "Phosh",
+      "kind": "desktop_env",
+      "url": "https://github.com/015stray91/phosh-ux",
+      "fork_of": "PhoshMobi/phosh",
+      "upstream": "https://gitlab.gnome.org/World/Phosh/phosh",
+      "branch": "main",
+      "license": "GPL-3.0-or-later",
+      "arch": [
+        "arm64",
+        "x86_64"
+      ],
+      "language": "C",
+      "role": "wayland_shell",
+      "note": "The mobile Wayland shell used as NH-Pro's session. It is a SHELL, not a compositor: the compositor is phoc, which is a separate wlroots-based server. Phosh talks to phoc over wlr-layer-shell plus three private protocols (phosh-private.xml, phoc-device-state-unstable-v1, phoc-layer-shell-effects-unstable-v1). Any compositor that means to host Phosh has to serve those, which is why it cannot be dropped in front of an arbitrary display server.",
+      "requires_protocols": [
+        "xdg-shell",
+        "wlr-layer-shell-unstable-v1",
+        "wlr-foreign-toplevel-management",
+        "wlr-output-management",
+        "wlr-screencopy",
+        "wlr-gamma-control",
+        "wlr-output-power-management",
+        "ext-idle-notify-v1",
+        "phosh-private",
+        "phoc-device-state-unstable-v1",
+        "phoc-layer-shell-effects-unstable-v1",
+        "virtual-keyboard-unstable-v1",
+        "input-method-unstable-v2"
+      ],
+      "compositor": "phoc"
+    },
+    {
+      "id": "lipstick",
+      "name": "Lipstick",
+      "kind": "desktop_env",
+      "url": "https://github.com/015stray91/lipstick",
+      "fork_of": "nemomobile-ux/lipstick",
+      "upstream": "https://github.com/nemomobile-ux/lipstick",
+      "branch": "master",
+      "license": "LGPL-2.1",
+      "arch": [
+        "arm64",
+        "x86_64"
+      ],
+      "language": "C++",
+      "role": "wayland_compositor",
+      "note": "Nemo Mobile/Sailfish's homescreen framework, and unlike Phosh it IS a compositor: it subclasses QWaylandCompositor and serves xdg-shell outright. It is Qt/QML, which makes it the natural host for a QML theme generated from Glacier tokens. Two caveats recorded so they are not rediscovered: the tree is Qt6-only (CMakeLists requires 6.2, the rpm spec is still lipstick-qt5 0.36.29), and it carries an alien_bridge_server notification path -- Sailfish's 'Android in a bridge' model, which is the thing AnyRealm replaces with one userspace.",
+      "serves_protocols": [
+        "xdg-shell",
+        "wlr-layer-shell",
+        "viewporter",
+        "fractional-scale",
+        "qt-window-manager"
+      ],
+      "theme_host": true
+    }
+  ],
+  "ux_integrations": [
+    {
+      "id": "ubuntu-touch",
+      "name": "Ubuntu Touch (tracker)",
+      "kind": "issue_tracker",
+      "url": "https://github.com/015stray91/ubuntu-touch",
+      "fork_of": "ubports/ubuntu-touch",
+      "branch": "master",
+      "is_ux": false,
+      "brings_ui": null,
+      "note": "Not a UX integration and not buildable. The tree is documentation only: README, CONTRIBUTING, CODE_OF_CONDUCT, CORE_APPS, SUPPORT, templates, FUNDING. Zero source files of any language. Upstream's own README says it is where bugs and feature requests are tracked for Ubuntu Touch. Including it in a build would contribute eight markdown files.",
+      "what_to_use_instead": "The Ubuntu Touch UI is Lomiri (formerly Unity8), which lives in ubports/lomiri and is a Wayland compositor written in C++/QML. That is the tree a UX integration would need, and it is not in this fork.",
+      "cloned_files": 8,
+      "cloned_code_files": 0
+    },
+    {
+      "id": "ubports-installer",
+      "name": "UBports Installer",
+      "kind": "installer",
+      "url": "https://github.com/015stray91/ubports-installer",
+      "fork_of": "ubports/ubports-installer",
+      "branch": "master",
+      "is_ux": false,
+      "brings_ui": null,
+      "language": "JavaScript/Svelte (Electron)",
+      "note": "A desktop flashing application. It is not a UI for the phone; it is the tool a computer runs to put an OS on the phone. Svelte UI over an Electron shell, speaking adb/fastboot/heimdall to the device.",
+      "why_it_matters_here": "Its plugin contract is the useful part and it is the same shape AnyRealm's builder needs. Each OS flavour is a plugin subclassing src/core/plugins/plugin.js with three lifecycle methods: init() -> Promise<boolean>, kill() -> Promise, wait() -> CancelablePromise<string>. Registered by flavour key in plugins/index.js: adb, fastboot, heimdall, systemimage, asteroid_os, lineage_os, postmarketos, core. A mobile_kernel edition is one more plugin, not a fork of the app.",
+      "plugin_contract": {
+        "base_class": "src/core/plugins/plugin.js",
+        "constructor": "(props, cachePath, event, log, settings)",
+        "methods": {
+          "init": "Promise<boolean> -- false means do not retry; throw to show the error",
+          "kill": "Promise -- stop running tasks",
+          "wait": "CancelablePromise<string> -- block until a device appears"
+        },
+        "registered_flavours": [
+          "adb",
+          "asteroid_os",
+          "lineage_os",
+          "postmarketos",
+          "core",
+          "fastboot",
+          "heimdall",
+          "systemimage"
+        ],
+        "declares_task_actions": true,
+        "note": "plugins/index.js dispatches per action and logs 'running <plugin> action <fn>', so a new edition adds a flavour key rather than branching inside the app."
+      }
+    },
+    {
+      "id": "pmaports",
+      "name": "postmarketOS aports (pmaports)",
+      "kind": "package_repo",
+      "url": "https://github.com/015stray91/pmaports",
+      "fork_of": "postmarketOS/pmaports",
+      "branch": "danila/courbet",
+      "is_ux": false,
+      "brings_ui": "21 selectable UIs, as packages",
+      "language": "APKBUILD (Alpine)",
+      "note": "Not a UX integration: it is the package repository that lets you choose one. The UI is a package, not a patch: postmarketos-ui-{asteroid,bananui,console,fbkeyboard,framebufferphone,gnome,gnome-mobile,i3wm,kodi,lxqt,mate,phosh,plasma-bigscreen,plasma-desktop,plasma-mobile,shelli,sway,sxmo-de-dwm,sxmo-de-sway,weston}. 114 packages in main/. This is the correct model for AnyRealm's 'compose your own desktop' promise and the reason the UX choice belongs in the builder rather than in the ISO script.",
+      "ui_packages": [
+        "postmarketos-ui-asteroid",
+        "postmarketos-ui-bananui",
+        "postmarketos-ui-console",
+        "postmarketos-ui-fbkeyboard",
+        "postmarketos-ui-framebufferphone",
+        "postmarketos-ui-gnome",
+        "postmarketos-ui-gnome-mobile",
+        "postmarketos-ui-i3wm",
+        "postmarketos-ui-kodi",
+        "postmarketos-ui-lxqt",
+        "postmarketos-ui-mate",
+        "postmarketos-ui-phosh",
+        "postmarketos-ui-plasma-bigscreen",
+        "postmarketos-ui-plasma-desktop",
+        "postmarketos-ui-plasma-mobile",
+        "postmarketos-ui-shelli",
+        "postmarketos-ui-sway",
+        "postmarketos-ui-sxmo-de-dwm",
+        "postmarketos-ui-sxmo-de-sway",
+        "postmarketos-ui-weston"
+      ],
+      "branch_note": "The checked-out branch is danila/courbet ('xiaomi-courbet: new device'), a single-device branch, not postmarketOS master. Building from it would produce a Xiaomi Courbet tree, not a general one.",
+      "packages_in_main": 114,
+      "main_devices": [
+        "device-pine64-pinephone",
+        "device-purism-librem5",
+        "device-qemu-aarch64",
+        "device-qemu-amd64",
+        "device-qemu-riscv64"
+      ]
+    }
+  ]
+}

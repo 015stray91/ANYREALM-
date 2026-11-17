@@ -1,109 +1,267 @@
-name: Build Kiosity Hybrid Universal ISO
+name: AnyRealm builder - live cockpit ISO
+
+# Builds a bootable x86_64 ISO whose job is to run the AnyRealm builder cockpit
+# on bare metal: a live Ubuntu base, the app served locally, a kiosk browser, and
+# a Calamares installer entry.
+#
+# This is the *builder appliance*. It is NOT the AnyRealm desktop edition -- that
+# is produced by Super-Builders (fuse_darkmatter_nh.sh): kernel-zenith 6.12 +
+# DarkMatter rootfs + Kali NetHunter Pro user space, NUKI/NURFS.
+#
+# Defects fixed from the previous version of this file:
+#   * debootstrap pointed at http://ubuntu.com, which serves a marketing HTML
+#     page, not an apt archive -> the chroot came up empty. Now archive.ubuntu.com.
+#   * vmlinuz/initrd were wget'd from https://ubuntu.com, saving HTML into the
+#     kernel path. Now taken from the installed linux-image in the live root.
+#   * debootstrap --foreign was never followed by --second-stage. Now a normal
+#     full bootstrap.
+#   * firefox, openbox, xinit and bun were used but never installed.
+#   * `mkdir -p .../etc/skel/.xinitrc` made a directory where a file belongs.
+#   * No UEFI/ESP and -r instead of -R, which breaks long names and UEFI-only
+#     machines (the Vivobook Go has no CSM, so USB boot needs an ESP).
+
 on:
   workflow_dispatch:
+    inputs:
+      node_version:
+        description: 'Node major version for the bundled app'
+        default: '24'
+        type: string
+
+permissions:
+  contents: read
 
 env:
-  LLVM: -12
+  DEBIAN_FRONTEND: noninteractive
+  SUITE: jammy
+  MIRROR: http://archive.ubuntu.com/ubuntu
 
 jobs:
   build-iso:
-    runs-on: ubuntu-22.04  # FIXED: Uses correct dot syntax to trigger runner instantly
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
     steps:
-      - name: Step 1 - Checkout repository code
-        uses: actions/checkout@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Step 2 - Set up Node.js Environment
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"  # FIXED: Enforces strict non-deprecated Node 24 baseline
-
-      - name: Step 3 - Install Cross-Compiler & Installer Toolchains
+      - name: Install host tooling
         run: |
+          set -euo pipefail
           sudo apt-get update
-          # Ingest un-bloated base tools and the graphical partition installer engine
-          sudo apt-get install -y xorriso mkisofs genisoimage squashfs-tools isolinux syslinux-common wget debootstrap calamares
-          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
-          sudo apt-get install -y gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu
+          sudo apt-get install -y --no-install-recommends \
+            debootstrap squashfs-tools xorriso mtools dosfstools \
+            isolinux syslinux-common grub-common grub-efi-amd64-bin
 
-      - name: Step 4 - Bootstrap Ubuntu 22.04 LTS Core Base
+      - name: Bootstrap the live root
         run: |
-          mkdir -p ./iso_workspace/image/casper
-          mkdir -p ./iso_workspace/image/isolinux
-          mkdir -p ./iso_workspace/image/boot/grub
-          mkdir -p ./iso_workspace/chroot
-          mkdir -p ./output
-          
-          # Initialize the raw minimal system core without hardware locks
-          sudo debootstrap --variant=minbase --foreign --arch=amd64 jammy ./iso_workspace/chroot http://ubuntu.com
-          
-          # Force clone your real, uncorrupted repository payload into the Live environment layers
-          sudo mkdir -p ./iso_workspace/chroot/C/ANYREALM-
-          sudo cp -a ./. ./iso_workspace/chroot/C/ANYREALM-/
+          set -euo pipefail
+          sudo mkdir -p iso_workspace/chroot
+          sudo debootstrap --arch=amd64 --variant=minbase \
+            "$SUITE" iso_workspace/chroot "$MIRROR"
 
-      - name: Step 5 - Enforce Single-Purpose Fullscreen Kiosk Mode & Try-Me Environment
+      - name: Populate the live root
         run: |
-          # Build a clean room xinit display profile to load your desktop cockpit side-by-side on boot
-          sudo mkdir -p ./iso_workspace/chroot/etc/skel/.xinitrc
-          sudo cat <<EOF > ./iso_workspace/chroot/etc/skel/.xinitrc
-          # Launch Bun backend daemon locally inside the Live trial environment
-          cd /C/ANYREALM- && bun run server.ts &
-          
-          # Spawn Firefox Nightly window pane and map fullscreen viewport parameters 
-          firefox --kiosk --no-sandbox http://localhost:3000 &
-          exec openbox-session
-          EOF
-          
-          # Inject the visual desktop launcher shortcut to trigger the universal bare-metal installer wizard
-          sudo mkdir -p ./iso_workspace/chroot/etc/skel/Desktop
-          sudo cat <<EOF > ./iso_workspace/chroot/etc/skel/Desktop/install-kiosity.desktop
+          set -euo pipefail
+          R=iso_workspace/chroot
+          sudo chroot "$R" bash -c "
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              linux-image-generic \
+              xserver-xorg xinit openbox \
+              firefox \
+              ca-certificates curl xz-utils gnupg \
+              systemd-sysv live-boot
+            apt-get clean
+            rm -rf /var/lib/apt/lists/*
+          "
+
+      - name: Install Node and the app
+        env:
+          NODE_VERSION: ${{ inputs.node_version }}
+        run: |
+          set -euo pipefail
+          R=iso_workspace/chroot
+          NODE_MAJOR="${NODE_VERSION%%.*}"
+          sudo chroot "$R" bash -c "
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            mkdir -p /etc/apt/keyrings
+            curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+              | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+            echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main' \
+              > /etc/apt/sources.list.d/nodesource.list
+            apt-get update
+            apt-get install -y --no-install-recommends nodejs
+            apt-get clean
+          "
+          sudo mkdir -p "$R/opt/anyrealm"
+          for f in package.json server.ts index.html metadata.json tsconfig.json vite.config.ts src assets; do
+            [ -e "$f" ] && sudo cp -a "$f" "$R/opt/anyrealm/" || true
+          done
+          sudo chroot "$R" bash -c "
+            set -e
+            cd /opt/anyrealm
+            npm install --no-audit --no-fund
+            npx vite build
+          "
+
+      - name: Kiosk session and installer entry
+        run: |
+          set -euo pipefail
+          R=iso_workspace/chroot
+          sudo mkdir -p "$R/etc/skel" "$R/etc/systemd/system" "$R/usr/share/applications"
+          sudo chroot "$R" bash -c 'id -u anyrealm >/dev/null 2>&1 || useradd -m -s /bin/bash anyrealm'
+
+          # .xinitrc is a FILE. The previous version mkdir -p'd it, so xinit
+          # failed because the path was a directory.  YAML strips the block
+          # scalar's common indentation, so these heredoc bodies land at column 0.
+          sudo tee "$R/etc/skel/.xinitrc" >/dev/null <<'XEOF'
+          #!/bin/sh
+          cd /opt/anyrealm || exit 1
+          NODE_ENV=production PORT=3000 node server.ts &
+          sleep 4
+          exec firefox --kiosk --no-remote http://127.0.0.1:3000
+          XEOF
+          sudo chmod 0755 "$R/etc/skel/.xinitrc"
+
+          sudo tee "$R/etc/systemd/system/anyrealm-kiosk.service" >/dev/null <<'UEOF'
+          [Unit]
+          Description=AnyRealm builder cockpit
+          After=network.target
+
+          [Service]
+          User=anyrealm
+          WorkingDirectory=/opt/anyrealm
+          Environment=NODE_ENV=production
+          Environment=PORT=3000
+          ExecStart=/usr/bin/node server.ts
+          Restart=always
+
+          [Install]
+          WantedBy=graphical.target
+          UEOF
+          sudo chroot "$R" systemctl enable anyrealm-kiosk.service || true
+
+          sudo tee "$R/usr/share/applications/install-anyrealm.desktop" >/dev/null <<'DEOF'
           [Desktop Entry]
-          Name=Install Kiosity OS Permanently
-          Comment=Launch hardware-agnostic non-destructive partition installer wizard
-          Exec=sudo calamares
+          Name=Install AnyRealm
+          Comment=Hardware-agnostic partition installer
+          Exec=calamares
           Icon=install
           Type=Application
           Terminal=false
           Categories=System;
-          EOF
-          sudo chmod +x ./iso_workspace/chroot/etc/skel/Desktop/install-kiosity.desktop
+          DEOF
+          sudo chmod 0644 "$R/usr/share/applications/install-anyrealm.desktop"
 
-      - name: Step 6 - Populate Universal Multi-Device Bootloaders
+      - name: Build the squashfs
         run: |
-          cp /usr/lib/ISOLINUX/isolinux.bin ./iso_workspace/image/isolinux/
-          cp /usr/lib/syslinux/modules/bios/ldlinux.c32 ./iso_workspace/image/isolinux/
-          
-          # Set up agnostic GRUB configurations that dynamically scan target chassis at boot time
-          echo 'menuentry "Try Kiosity OS Live Desktop (Try Me Instance)" {' > ./iso_workspace/image/boot/grub/grub.cfg
-          echo '    linux /casper/vmlinuz boot=casper quiet splash ---' >> ./iso_workspace/image/boot/grub/grub.cfg
-          echo '    initrd /casper/initrd' >> ./iso_workspace/image/boot/grub/grub.cfg
-          echo '}' >> ./iso_workspace/image/boot/grub/grub.cfg
-          echo 'menuentry "Install Kiosity OS Directly (Universal Setup Wizard)" {' >> ./iso_workspace/image/boot/grub/grub.cfg
-          echo '    linux /casper/vmlinuz boot=casper automatic-installer quiet splash ---' >> ./iso_workspace/image/boot/grub/grub.cfg
-          echo '    initrd /casper/initrd' >> ./iso_workspace/image/boot/grub/grub.cfg
-          echo '}' >> ./iso_workspace/image/boot/grub/grub.cfg
+          set -euo pipefail
+          R=iso_workspace/chroot
+          sudo rm -rf "$R"/proc/* "$R"/sys/* "$R"/dev/* "$R"/tmp/* 2>/dev/null || true
+          mkdir -p iso_workspace/image/casper
+          sudo mksquashfs "$R" iso_workspace/image/casper/filesystem.squashfs \
+            -noappend -comp xz
 
-      - name: Step 7 - Package Cross-Compiled Kernel & SquashFS Layers
+      - name: Take kernel and initrd from the live root
         run: |
-          # Fetch stable release mirror kernel nodes to prevent black-screen hangs
-          sudo wget -O ./iso_workspace/image/casper/vmlinuz https://ubuntu.com
-          sudo wget -O ./iso_workspace/image/casper/initrd https://ubuntu.com
-          
-          # Compress your un-bloated filesystem tree into the target Caspar module blocks
-          sudo mksquashfs ./iso_workspace/chroot ./iso_workspace/image/casper/filesystem.squashfs -noappend -comp xz
+          set -euo pipefail
+          R=iso_workspace/chroot
+          VMLINUZ=$(sudo chroot "$R" bash -c 'ls /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1')
+          INITRD=$(sudo chroot "$R" bash -c 'ls /boot/initrd.img-* 2>/dev/null | sort -V | tail -1')
+          [ -n "$VMLINUZ" ] || { echo "::error::no kernel in the live root -- linux-image-generic did not install" >&2; exit 1; }
+          [ -n "$INITRD" ] || { echo "::error::no initrd in the live root" >&2; exit 1; }
+          sudo cp "$R/$VMLINUZ" iso_workspace/image/casper/vmlinuz
+          sudo cp "$R/$INITRD" iso_workspace/image/casper/initrd
+          echo "kernel: $VMLINUZ"
+          echo "initrd: $INITRD"
 
-      - name: Step 8 - Compile True Ventoy-Ready Hybrid ISO Image
+      - name: Boot menus and ESP
         run: |
-          mkisofs -D -r -V "KIOSITY_BOOT" \
-                  -cache-inodes -J -l \
-                  -b isolinux/isolinux.bin \
-                  -c isolinux/boot.cat \
-                  -no-emul-boot -boot-load-size 4 -boot-info-table \
-                  -o ./output/Kiosity-Universal-OS.iso \
-                  ./iso_workspace/image/
+          set -euo pipefail
+          I=iso_workspace/image
+          mkdir -p "$I/isolinux" "$I/boot/grub" "$I/EFI/BOOT"
+          cp /usr/lib/ISOLINUX/isolinux.bin "$I/isolinux/"
+          cp /usr/lib/ISOLINUX/isohdpfx.bin "$I/isolinux/isohdpfx.bin"
+          cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "$I/isolinux/"
 
-      - name: Step 9 - Upload Final Universal ISO Package Deliverable
+          cat > "$I/boot/grub/grub.cfg" <<'CFG'
+          set timeout=10
+          set default=0
+          menuentry "AnyRealm builder - live cockpit" {
+            linux /casper/vmlinuz boot=live quiet splash ---
+            initrd /casper/initrd
+          }
+          menuentry "AnyRealm builder - live cockpit (safe graphics)" {
+            linux /casper/vmlinuz boot=live nomodeset quiet splash ---
+            initrd /casper/initrd
+          }
+          menuentry "Install AnyRealm to disk" {
+            linux /casper/vmlinuz boot=live automatic-installer quiet splash ---
+            initrd /casper/initrd
+          }
+          CFG
+          cp "$I/boot/grub/grub.cfg" "$I/EFI/BOOT/grub.cfg"
+
+          cat > "$I/isolinux/isolinux.cfg" <<'CFG'
+          default live
+          label live
+            kernel /casper/vmlinuz
+            append boot=live quiet splash ---
+            initrd /casper/initrd
+          CFG
+
+          # A real ESP so a UEFI-only machine can boot this from USB. The
+          # Vivobook Go has no CSM, so without this the stick is unbootable.
+          grub-mkstandalone -O x86_64-efi \
+            --modules="part_gpt part_msdos fat iso9660 normal linux search search_fs_file configfile" \
+            -o "$I/EFI/BOOT/BOOTX64.EFI" \
+            "boot/grub/grub.cfg=$I/boot/grub/grub.cfg"
+
+          mkdir -p efi_img
+          dd if=/dev/zero of=efi_img/efi.img bs=1M count=8 status=none
+          mkfs.vfat -n ANYREALM efi_img/efi.img >/dev/null
+          mmd -i efi_img/efi.img ::/EFI ::/EFI/BOOT
+          mcopy -i efi_img/efi.img "$I/EFI/BOOT/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+
+      - name: Assemble the hybrid ISO
+        run: |
+          set -euo pipefail
+          I=iso_workspace/image
+          mkdir -p output
+          ISO=output/AnyRealm-builder-live-amd64.iso
+          # -R (Rock Ridge), never -r. xorriso so the ESP can be appended and the
+          # image carries an MBR plus GPT -- both are needed for USB boot on
+          # UEFI-only hardware, which is what the Vivobook Go is.
+          xorriso -as mkisofs \
+            -R -iso-level 3 -joliet-long -V "ANYREALM_BUILDER" \
+            -b isolinux/isolinux.bin -c isolinux/boot.cat \
+            -no-emul-boot -boot-load-size 4 -boot-info-table \
+            -isohybrid-mbr "$I/isolinux/isohdpfx.bin" \
+            -eltorito-alt-boot \
+            -e --interval:appended_partition_2:all:: -no-emul-boot \
+            -append_partition 2 0xef efi_img/efi.img \
+            -isohybrid-gpt-basdat \
+            -o "$ISO" "$I"
+
+      - name: Verify the ISO is actually bootable
+        run: |
+          set -euo pipefail
+          ISO=output/AnyRealm-builder-live-amd64.iso
+          ls -l "$ISO"
+          sig=$(xxd -p -l 2 -s 510 "$ISO")
+          [ "$sig" = "55aa" ] || { echo "::error::no MBR signature ($sig) -- USB boot will fail" >&2; exit 1; }
+          gpt=$(xxd -p -l 8 -s 512 "$ISO")
+          [ "$gpt" = "4546492050415254" ] || { echo "::error::no GPT header at LBA1 -- UEFI boot will fail" >&2; exit 1; }
+          echo "hybrid-bootable: MBR 55aa, GPT present"
+
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: Kiosity-Universal-OS
-          path: ./output/Kiosity-Universal-OS.iso
-          overwrite: true  # Shields compilation logs from old artifact name collisions
+          name: AnyRealm-builder-live-amd64
+          path: output/AnyRealm-builder-live-amd64.iso
+          retention-days: 14
+          overwrite: true

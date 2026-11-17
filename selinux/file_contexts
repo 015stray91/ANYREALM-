@@ -1,0 +1,15 @@
+/usr(/.*)?/bin(/.*)?	system_u:object_r:nurfs_glibc_file
+/usr(/.*)?/sbin(/.*)?	system_u:object_r:nurfs_glibc_file
+/usr(/.*)?/libexec(/.*)?	system_u:object_r:nurfs_glibc_file
+/lib64(/.*)?	system_u:object_r:nurfs_glibc_lib
+/nurfs(/.*)?	system_u:object_r:nurfs_mountpoint
+/dev/dri(/.*)?	system_u:object_r:nurfs_drm_device
+/usr/lib(/.*)?	system_u:object_r:nurfs_glibc_lib
+/usr/lib(/.*)?/ld-linux[^/]*	system_u:object_r:nurfs_glibc_ldso
+/dev/loop[0-9]+	system_u:object_r:nurfs_blk_device
+/dev/input(/.*)?	system_u:object_r:nurfs_input_device
+/sys/class/drm(/.*)?	system_u:object_r:nurfs_display_t
+/lib64/ld-linux[^/]*	system_u:object_r:nurfs_glibc_ldso
+/dev/block/nurfs(/.*)?	system_u:object_r:nurfs_blk_device
+/var/cache/ldconfig(/.*)?	system_u:object_r:nurfs_glibc_cache
+/etc/ld\.so\.cache	system_u:object_r:nurfs_glibc_cache

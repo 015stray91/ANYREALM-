@@ -1,0 +1,172 @@
+;; ---------------------------------------------------------------------------
+;; NURFS dual-libc and hybrid-filesystem policy delta.
+;;
+;; This is a *delta*, not a full policy: it is written to be inserted into an
+;; existing Android policy (the one inside ramdisk.img), and it references types
+;; Android already declares.
+;;
+;; Two things in stock Android actively prevent the NURFS layout, and both are
+;; deliberate design decisions rather than bugs:
+;;
+;;   1. There is no glibc domain. Android's policy describes bionic user space
+;;      only: every executable under /system and /vendor transitions into a
+;;      domain that expects bionic's linker and bionic's /etc layout. A glibc
+;;      binary executed there lands on an unlabeled or mislabeled transition and
+;;      is denied the moment it touches its own loader cache.
+;;
+;;   2. vold refuses ext4. Android mounts ext4, but only through vold's own
+;;      fs_mgr entry points, on partitions it was told about at build time
+;;      (/data, /metadata, and vendor fstab entries). A hand-mounted ext4 image
+;;      -- which is exactly what a fused /usr or a second rootfs is -- has no
+;;      fstab entry, so vold never offers a mount point and the policy denies
+;;      `mount` on the filesystem class for every domain that tries.
+;;
+;; Neither is worked around here by relaxing the whole policy. Both get a named
+;; domain and the narrowest rule that makes the hybrid work, so a device with
+;; SELinux enforcing can still boot the NURFS tree.
+;;
+;; Compile check:  secilc -o /tmp/nurfs.policy stub.cil nurfs-dual-libc.cil
+;; ---------------------------------------------------------------------------
+
+;; --- 1. glibc user space ---------------------------------------------------
+;;
+;; A single domain is not enough: glibc programs and glibc's own helpers need
+;; different access. Three domains cover the real cases.
+;;
+;;   nurfs_glibc_t       ordinary glibc executables (bash, coreutils, the DE)
+;;   nurfs_ldconfig_t    ld.so cache rebuild, needs write to /etc/ld.so.cache
+;;   nurfs_pkg_t         package-manager-like tools that write into /usr
+
+(type nurfs_glibc_t)
+(type nurfs_ldconfig_t)
+(type nurfs_pkg_t)
+
+;; The glibc tree itself. Giving it its own file type is what makes the
+;; transition possible: execution of a file with this type enters
+;; nurfs_glibc_t, which is the one behaviour stock policy cannot express.
+(type nurfs_glibc_file)
+(type nurfs_glibc_ldso)
+(type nurfs_glibc_lib)
+(type nurfs_glibc_cache)
+
+;; /usr, /lib64 and the other prefixes NURFS owns. Android has no /usr, so
+;; nothing is being taken away from bionic by labelling it.
+(filecon "/usr(/.*)?/bin(/.*)?" any (system_u object_r nurfs_glibc_file ((s0) (s0))))
+(filecon "/usr(/.*)?/sbin(/.*)?" any (system_u object_r nurfs_glibc_file ((s0) (s0))))
+(filecon "/usr(/.*)?/libexec(/.*)?" any (system_u object_r nurfs_glibc_file ((s0) (s0))))
+(filecon "/usr/lib(/.*)?/ld-linux[^/]*" any (system_u object_r nurfs_glibc_ldso ((s0) (s0))))
+(filecon "/lib64/ld-linux[^/]*" any (system_u object_r nurfs_glibc_ldso ((s0) (s0))))
+(filecon "/usr/lib(/.*)?" any (system_u object_r nurfs_glibc_lib ((s0) (s0))))
+(filecon "/lib64(/.*)?" any (system_u object_r nurfs_glibc_lib ((s0) (s0))))
+(filecon "/var/cache/ldconfig(/.*)?" any (system_u object_r nurfs_glibc_cache ((s0) (s0))))
+(filecon "/etc/ld\.so\.cache" any (system_u object_r nurfs_glibc_cache ((s0) (s0))))
+
+;; Execution of a glibc binary enters the glibc domain. This is the rule the
+;; whole hybrid rests on.
+(typetransition init nurfs_glibc_file process nurfs_glibc_t)
+(typetransition nurfs_glibc_t nurfs_glibc_file process nurfs_glibc_t)
+(typetransition init nurfs_glibc_ldso process nurfs_ldconfig_t)
+
+;; glibc reads its loader, maps its libraries and needs execmod. execmod is the
+;; permission Android policy avoids on purpose, and glibc needs it for text
+;; relocations in a few libraries. Scoped to the glibc file types only, so no
+;; Android file type gains it.
+(allow nurfs_glibc_t nurfs_glibc_ldso (file (read open getattr map execute)))
+(allow nurfs_glibc_t nurfs_glibc_lib (file (read open getattr map execute execmod)))
+(allow nurfs_glibc_t nurfs_glibc_file (file (read open getattr map execute execmod)))
+(allow nurfs_glibc_t nurfs_glibc_cache (file (read open getattr lock map)))
+
+;; glibc resolves NSS, locales and config through normal files.
+(allow nurfs_glibc_t system_file (file (read open getattr map execute)))
+(allow nurfs_glibc_t rootfs (file (read open getattr map)))
+
+;; A glibc process needs a process domain of its own to fork, signal and exist.
+(allow nurfs_glibc_t self (process (fork signal sigchld sigkill signull getattr setcurrent)))
+(allow nurfs_glibc_t nurfs_glibc_t (process (signal sigchld)))
+
+;; IPC: glibc programs talk over unix sockets and pipes, and log to stderr.
+(allow nurfs_glibc_t self (unix_stream_socket (create bind connect listen accept read write getattr ioctl)))
+(allow nurfs_glibc_t nurfs_glibc_t (unix_stream_socket (connectto read write getattr)))
+(allow nurfs_glibc_t self (fifo_file (create read write getattr ioctl)))
+(allow nurfs_glibc_t devpts (chr_file (read write getattr ioctl)))
+
+;; ldconfig rebuilds /etc/ld.so.cache, which is the one write the glibc tree
+;; needs at boot. Without it every glibc program re-resolves its libraries.
+(allow nurfs_ldconfig_t nurfs_glibc_cache (file (create write rename setattr unlink)))
+(allow nurfs_ldconfig_t nurfs_glibc_lib (dir (search read open getattr)))
+(allow nurfs_ldconfig_t nurfs_glibc_file (file (read open getattr map execute)))
+(allow nurfs_ldconfig_t nurfs_glibc_t (unix_stream_socket (read write)))
+
+;; Package tools write into the glibc prefix, and must not reach Android's.
+(allow nurfs_pkg_t nurfs_glibc_file (file (create write rename setattr unlink read open getattr map execute)))
+(allow nurfs_pkg_t nurfs_glibc_lib (file (create write rename setattr unlink read open getattr map execute execmod)))
+(allow nurfs_pkg_t nurfs_glibc_ldso (file (read open getattr map execute)))
+(allow nurfs_pkg_t nurfs_glibc_cache (file (create write rename setattr unlink)))
+
+;; --- 2. ext4 without vold --------------------------------------------------
+;;
+;; Android declares its block devices and filesystems at build time and vold
+;; mounts them. A fused image has no fstab entry, so it is mounted by an early
+;; init service instead. That needs three separate grants:
+;;
+;;   filesystem (mount)   the permission to call mount(2) at all
+;;   blk_file  (read)     the right to open the device node
+;;   the block device     a label, so the rule can name it
+
+(type nurfs_ext4_t)
+(type nurfs_blk_device)
+(type nurfs_mount_t)
+(type nurfs_mountpoint)
+
+;; Object types need a role before filecon can name them in a context. These are
+;; object-only types, so object_r is correct for all of them.
+(roletype object_r nurfs_glibc_file)
+(roletype object_r nurfs_glibc_ldso)
+(roletype object_r nurfs_glibc_lib)
+(roletype object_r nurfs_glibc_cache)
+(roletype object_r nurfs_ext4_t)
+(roletype object_r nurfs_blk_device)
+(roletype object_r nurfs_mountpoint)
+
+;; Process types need the role that owns the domain.
+(roletype r nurfs_glibc_t)
+(roletype r nurfs_ldconfig_t)
+(roletype r nurfs_pkg_t)
+(roletype r nurfs_mount_t)
+
+;; The images and the loop devices they are attached to.
+(filecon "/dev/block/nurfs(/.*)?" any (system_u object_r nurfs_blk_device ((s0) (s0))))
+(filecon "/dev/loop[0-9]+" any (system_u object_r nurfs_blk_device ((s0) (s0))))
+(filecon "/nurfs(/.*)?" any (system_u object_r nurfs_mountpoint ((s0) (s0))))
+
+;; Mounting: the domain may mount a nurfs image onto a nurfs mount point, and
+;; may remount it read-only or read-write. It may not mount anything else.
+(allow nurfs_mount_t nurfs_blk_device (blk_file (read open getattr ioctl)))
+(allow nurfs_mount_t nurfs_ext4_t (filesystem (mount remount unmount getattr)))
+(allow nurfs_mount_t nurfs_mountpoint (dir (search read write open getattr mounton)))
+(allow nurfs_mount_t self (process (fork signal sigchld)))
+(allow nurfs_mount_t self (capability (sys_admin dac_override dac_read_search)))
+
+;; A loop device needs to be associated with the image file first.
+(allow nurfs_mount_t nurfs_mountpoint (file (read open getattr ioctl)))
+(typetransition init nurfs_blk_device blk_file nurfs_blk_device)
+
+;; The mount must survive the transition into the glibc domain, so glibc
+;; processes may search and read the mount point but never mount over it.
+(allow nurfs_glibc_t nurfs_mountpoint (dir (search read open getattr)))
+(allow nurfs_glibc_t nurfs_ext4_t (filesystem (getattr)))
+
+;; --- 3. What this deliberately does NOT do ---------------------------------
+;;
+;; No `permissive nurfs_glibc_t`. Making the domain permissive would work and
+;; would also hide every mistake: the point of a labelled domain is that the
+;; denials it still produces tell you which access the hybrid genuinely needs.
+;;
+;; No rule touching system_file writes. bionic's /system stays read-only to
+;; everything here, which is the invariant the fusion engine enforces in the
+;; filesystem and this policy enforces at run time.
+;;
+;; No `allow vold ... ext4`. Teaching vold ext4 would mean patching fs_mgr and
+;; its fstab, and it would put the fused image under vold's lifecycle -- a
+;; failed mount would then block /data. The fused image mounts from init before
+;; vold starts, which is why the rules above target a separate domain.

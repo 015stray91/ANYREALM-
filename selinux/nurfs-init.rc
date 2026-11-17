@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Mount the fused NURFS image before vold starts.
+#
+# Android init reads /system/etc/init/*.rc, so dropping this file in is enough;
+# init.rc itself is not edited. `on early-init` rather than `on init` because the
+# glibc user space has to exist before anything looks for /usr, and services that
+# start at `on init` include several that do.
+#
+# The mount helper is a separate script rather than a long `exec` here so a
+# failure is logged once, in one place, with the same message a human would
+# write at a shell.
+# ---------------------------------------------------------------------------
+on early-init
+    # vold has not started yet, and must not: it would not mount this anyway.
+    mkdir /nurfs 0755 root root
+
+on init
+    # The image may be a partition or a file; the helper tries both.
+    exec -- /system/bin/sh /system/bin/nurfs-mount.sh --mount /nurfs --ro
+
+on property:sys.boot_completed=1
+    # Once Android is up, report whether the fuse is actually in place. A
+    # device that booted Android but has no /usr is the failure this catches.
+    exec -- /system/bin/sh -c 'if [ -d /usr/bin ]; then setprop sys.anyrealm.nurfs mounted; else setprop sys.anyrealm.nurfs absent; fi'

@@ -308,6 +308,63 @@ export default function RootfsFuser() {
     document.body.removeChild(element);
   };
 
+  /* ---- Real merge ------------------------------------------------------ *
+   * Everything above this point builds a *plan*: a script describing how the
+   * sources should be combined. This part actually combines them, by asking
+   * the server to run the fusion engine over real directories on disk. The
+   * report it returns is the proof: what won each collision, what was
+   * isolated, what was kept aside.
+   * --------------------------------------------------------------------- */
+  const [mergeSources, setMergeSources] = useState<Array<{ name: string; path: string; priority: number }>>([
+    { name: 'android', path: '/tmp/anyrealm-extract/android', priority: 100 },
+    { name: 'kali', path: '/tmp/anyrealm-extract/kali', priority: 10 },
+  ]);
+  const [mergeOutput, setMergeOutput] = useState('/tmp/anyrealm-merged');
+  const [mergeRunning, setMergeRunning] = useState(false);
+  const [mergeReport, setMergeReport] = useState<any>(null);
+  const [mergeMarkdown, setMergeMarkdown] = useState<string>('');
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const [caps, setCaps] = useState<Record<string, boolean> | null>(null);
+
+  useEffect(() => {
+    fetch('/api/capabilities')
+      .then(r => r.json())
+      .then(d => setCaps(d.tools ?? null))
+      .catch(() => setCaps(null));
+  }, []);
+
+  const runRealFuse = async () => {
+    setMergeRunning(true);
+    setMergeError(null);
+    setMergeReport(null);
+    setMergeMarkdown('');
+    try {
+      const res = await fetch('/api/fuse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sources: mergeSources
+            .filter(s => s.name.trim() && s.path.trim())
+            .map(s => ({ name: s.name.trim(), path: s.path.trim(), priority: s.priority })),
+          rules: directories.map(d => ({
+            name: d.name,
+            rule: d.rule,
+            ...(d.rule === 'isolate' ? { isolateAs: `anyrealm-strata/${mergeSources[1]?.name ?? 'other'}/${d.name}` } : {}),
+          })),
+          output: mergeOutput,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || `merge failed (${res.status})`);
+      setMergeReport(json.report);
+      setMergeMarkdown(json.markdown ?? '');
+    } catch (err) {
+      setMergeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMergeRunning(false);
+    }
+  };
+
   // Dynamic directory counts for statistics summary
   const stats = {
     fuse: directories.filter(d => d.rule === 'fuse').length,
@@ -739,6 +796,168 @@ export default function RootfsFuser() {
 
         </div>
 
+      </div>
+
+      {/* REAL MERGE -- runs the fusion engine over directories on disk */}
+      <div className="bg-[#111827] border border-[#1e293b] rounded-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#1e293b] flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-emerald-400" />
+              Fuse for real
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
+              The synthesis above writes a plan. This runs it: the server merges the
+              directories you name into one tree, keeps every displaced file, and refuses
+              to let a second libc overwrite Android's.
+            </p>
+          </div>
+          <button
+            onClick={runRealFuse}
+            disabled={mergeRunning}
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-slate-950 px-4 py-2.5 rounded-lg font-bold text-xs transition-all cursor-pointer"
+          >
+            {mergeRunning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {mergeRunning ? 'Merging…' : 'Merge into one rootfs'}
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Sources (highest priority first)
+              </label>
+              <div className="mt-1.5 space-y-1.5">
+                {mergeSources.map((src, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <input
+                      value={src.name}
+                      onChange={e => setMergeSources(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
+                      placeholder="name"
+                      className="w-24 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 font-mono focus:border-emerald-500 outline-none"
+                    />
+                    <input
+                      value={src.path}
+                      onChange={e => setMergeSources(prev => prev.map((x, j) => j === i ? { ...x, path: e.target.value } : x))}
+                      placeholder="/path/to/extracted/rootfs"
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 font-mono focus:border-emerald-500 outline-none"
+                    />
+                    <button
+                      onClick={() => setMergeSources(prev => prev.filter((_, j) => j !== i))}
+                      className="px-2 py-1.5 text-slate-500 hover:text-rose-400 text-xs cursor-pointer"
+                      title="remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setMergeSources(prev => [...prev, { name: '', path: '', priority: 0 }])}
+                className="mt-2 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer"
+              >
+                + add source
+              </button>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Output tree
+              </label>
+              <input
+                value={mergeOutput}
+                onChange={e => setMergeOutput(e.target.value)}
+                className="mt-1.5 w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 font-mono focus:border-emerald-500 outline-none"
+              />
+              <p className="text-[11px] text-slate-500 mt-1.5">
+                Wiped before each merge, so a stale file can never masquerade as part of a fresh build.
+              </p>
+              {caps && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {Object.entries(caps).map(([tool, has]) => (
+                    <span
+                      key={tool}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                        has
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          : 'border-slate-700 bg-slate-800/50 text-slate-500 line-through'
+                      }`}
+                      title={has ? `${tool} available on this host` : `${tool} not installed`}
+                    >
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {mergeError && (
+            <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+              {mergeError}
+            </div>
+          )}
+
+          {mergeReport && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { label: 'files written', value: mergeReport.stats.filesWritten, cls: 'text-slate-100' },
+                  { label: 'collisions', value: mergeReport.collisions.length, cls: mergeReport.collisions.length ? 'text-amber-400' : 'text-slate-100' },
+                  { label: 'isolated', value: mergeReport.isolated.length, cls: 'text-fuchsia-400' },
+                  { label: 'duration', value: `${mergeReport.durationMs} ms`, cls: 'text-slate-100' },
+                ].map(m => (
+                  <div key={m.label} className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2">
+                    <div className={`text-lg font-semibold ${m.cls}`}>{m.value}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">{m.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {mergeReport.warnings.length > 0 && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 space-y-1">
+                  {mergeReport.warnings.map((w: string, i: number) => (
+                    <div key={i} className="text-[11px] text-amber-300 flex items-start gap-1.5">
+                      <Shield className="w-3 h-3 mt-0.5 shrink-0" />
+                      {w}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {mergeReport.collisions.length > 0 && (
+                <div className="rounded-md border border-slate-800 overflow-hidden">
+                  <div className="px-3 py-1.5 bg-slate-900/80 text-[10px] uppercase tracking-wide text-slate-500">
+                    collisions — winner keeps the path, loser is preserved
+                  </div>
+                  <div className="max-h-56 overflow-auto divide-y divide-slate-800/60">
+                    {mergeReport.collisions.slice(0, 200).map((c: any, i: number) => (
+                      <div key={i} className="px-3 py-1.5 flex items-center gap-2 text-[11px] font-mono">
+                        <span className="text-slate-300 flex-1 truncate">{c.relPath}</span>
+                        <span className="text-emerald-400">{c.winner}</span>
+                        <span className="text-slate-600">over</span>
+                        <span className="text-amber-400">{c.loser}</span>
+                        {c.protected && (
+                          <span className="px-1 rounded bg-rose-500/15 text-rose-300 text-[9px] uppercase">protected</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <details className="rounded-md border border-slate-800 bg-slate-950/60">
+                <summary className="px-3 py-2 text-[11px] font-semibold text-slate-400 cursor-pointer">
+                  full fusion report
+                </summary>
+                <pre className="px-3 pb-3 text-[11px] text-slate-400 font-mono whitespace-pre-wrap max-h-80 overflow-auto">
+                  {mergeMarkdown}
+                </pre>
+              </details>
+            </div>
+          )}
+        </div>
       </div>
 
     </div>

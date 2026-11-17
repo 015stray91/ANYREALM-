@@ -1,0 +1,65 @@
+;; Minimal stand-in for the parts of Android's policy that nurfs-dual-libc.cil
+;; refers to. Android's real policy declares these; this file exists only so the
+;; delta can be compiled and syntax-checked without dragging in the whole
+;; platform policy (which needs checkpolicy and the AOSP policy tree).
+;;
+;; The class set is the subset that matters here, with Android's permission
+;; names. If a rule in the delta uses a permission this stub does not declare,
+;; secilc fails -- which is the check we want. The MLS scaffolding (sensitivity,
+;; level, user, role) is required by secilc itself, not by the delta.
+
+(class file (read write open getattr map execute execmod lock rename setattr unlink ioctl append create))
+(class dir (search read write open getattr mounton rename setattr unlink create add_name remove_name rmdir reparent))
+(class process (fork signal sigchld sigkill signull getattr setcurrent transition))
+(class capability (sys_admin dac_override dac_read_search setuid setgid))
+(class unix_stream_socket (create bind connect listen accept read write getattr ioctl connectto))
+(class fifo_file (create read write getattr ioctl open unlink))
+(class chr_file (read write open getattr ioctl map execute))
+(class blk_file (read write open getattr ioctl map))
+(class filesystem (mount remount unmount getattr associate quotamod))
+(class lnk_file (read getattr))
+(class shm (create read write getattr destroy))
+(class sem (create read write getattr destroy))
+(class sock_file (read write getattr))
+(classorder (file dir process capability unix_stream_socket fifo_file chr_file blk_file filesystem lnk_file sock_file shm sem))
+
+(sid kernel)
+(sidorder (kernel))
+
+;; MLS scaffolding. Android runs in a single sensitivity, so one level is enough.
+(sensitivity s0)
+(sensitivityorder (s0))
+(level s0l (s0))
+(levelrange s0range ((s0) (s0)))
+(user system_u)
+(userlevel system_u (s0))
+(userrange system_u ((s0) (s0)))
+(role object_r)
+(userrole system_u object_r)
+(role r)
+(userrole system_u r)
+
+;; Android's own types that the delta references. Declared without attributes,
+;; so the delta must supply every allow rule it needs for them -- if the delta
+;; is incomplete, the gap shows up here rather than hiding behind a macro.
+(type system_file)
+(type rootfs)
+(type devpts)
+(type init)
+(type vold)
+(type su)
+(type shell)
+(type untrusted_app)
+(roletype object_r system_file)
+(roletype object_r rootfs)
+(roletype object_r devpts)
+(roletype r init)
+(roletype r vold)
+(roletype r su)
+(roletype r shell)
+(roletype r untrusted_app)
+
+;; secilc refuses a policy with no avrule at all, so give init the one bit of
+;; transition machinery the delta actually depends on.
+(allow init self (process (transition fork sigchld)))
+(allow init system_file (file (read open getattr map execute)))

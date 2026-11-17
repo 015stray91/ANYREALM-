@@ -19,11 +19,13 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
+    "lz4js": "^0.2.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^6.2.3",
-    "ws": "^8.21.1"
+    "ws": "^8.21.1",
+    "xz-decompress": "^0.2.3"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

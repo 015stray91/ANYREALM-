@@ -1,25 +1,71 @@
 import express from "express";
+import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
+import {
+  fuseRootfs,
+  renderReport,
+  probeCapabilities,
+  type SourceSpec,
+  type DirRule,
+} from "./fusion-engine";
+import {
+  loadCatalog,
+  probeAll,
+  sync,
+  mirrorState,
+  freshness,
+  mirrorRoot,
+} from "./repo-sync";
+import { composeWorkflow, chainRefusal } from "./workflow-gen";
+import { checkOneUserspace, renderInvariantReport } from "./one-userspace";
+import { uxSlots, groupedUxChoices, planUxIntegration } from "./ux-integration";
+import { planChain } from "./build-chain";
+import {
+  BACKENDS,
+  backendSplit,
+  refuseUkiAsNuki,
+  debosInvocation,
+  mkosiInvocation,
+  type Structure,
+} from "./image-backends";
+import { duplicationCost, NATIVE_VS_UNIFIED, FUSED_PROPERTIES, DUPLICATED } from "./fusion-economics";
+import {
+  resolveStylesheet, emitQmlTheme, bindComponents,
+} from "./glacier-qml-bridge";
+import { parseBootImage } from "./firmware-dissect";
+import { unpackLayers } from "./container-unpack";
+import {
+  validateTarget,
+  listBindings,
+  getBinding,
+  markComposed,
+  recordDispatch,
+  dispatchRefusal,
+  ForkError,
+} from "./fork-binding";
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT ?? 3000);
 
-app.use(express.json());
+// A firmware image is uploaded as base64 JSON, so the body limit has to be far
+// above the 100 KB default. 512 MB of base64 is a ~380 MB image, which covers a
+// full boot+vendor_boot+dtbo set with room to spare.
+app.use(express.json({ limit: process.env.ANYREALM_UPLOAD_LIMIT || "512mb" }));
 
 // Initialize Gemini SDK with telemetry and standard API Key configuration
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
   httpOptions: {
     headers: {
-      "User-Agent": "aistudio-build",
+      "User-Agent": "anyrealm-builder",
     },
   },
 });
@@ -598,6 +644,945 @@ app.post("/api/sudo/execute", (req, res) => {
   });
 });
 
+/* ------------------------------------------------------------------------- *
+ * Real build surface.
+ *
+ * Everything below actually does something. The panels above this line that
+ * only printed invented progress were the reason the GUI could not build a
+ * ROM or an OS -- it was a mock-up of a builder.
+ * ------------------------------------------------------------------------- */
+
+const CATALOG_FILE = path.join(process.cwd(), "sources-catalog.json");
+
+// The buildable upstream sources: custom ROM trees, mobile Linux distros,
+// desktop Linux distros, and kernel trees.
+app.get("/api/sources", (_req, res) => {
+  try {
+    const catalog = JSON.parse(fs.readFileSync(CATALOG_FILE, "utf-8"));
+    res.json(catalog);
+  } catch (err: any) {
+    res.status(500).json({ error: `cannot read sources catalog: ${err.message}` });
+  }
+});
+
+// Live state of every upstream. Cheap: git ls-remote only, no download.
+// Served with a short cache so the UI can poll it without hammering GitHub.
+let probeCache: { at: number; data: unknown } | null = null;
+app.get("/api/sources/probe", async (req, res) => {
+  const force = req.query.force === "1";
+  const ttl = 60_000;
+  if (!force && probeCache && Date.now() - probeCache.at < ttl) {
+    return res.json({ ...(probeCache.data as object), cached: true });
+  }
+  try {
+    const sources = loadCatalog(CATALOG_FILE, true);
+    const probes = await probeAll(sources, 6);
+    const mirrors = await Promise.all(sources.map((s) => mirrorState(s)));
+    const data = {
+      checkedAt: new Date().toISOString(),
+      mirrorRoot: mirrorRoot(),
+      sources: probes.map((p, i) => ({
+        ...p,
+        freshness: freshness(p, mirrors[i]),
+        mirror: mirrors[i],
+      })),
+    };
+    probeCache = { at: Date.now(), data };
+    res.json({ ...data, cached: false });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bring one upstream's local mirror up to date. Can take minutes for a ROM
+// tree, so the UI calls this per source rather than for the whole catalog.
+app.post("/api/sources/sync", async (req, res) => {
+  const { id, fullBlobs } = req.body ?? {};
+  if (!id) return res.status(400).json({ error: "id is required" });
+  try {
+    const sources = loadCatalog(CATALOG_FILE, true);
+    const src = sources.find((s) => s.id === id);
+    if (!src) return res.status(404).json({ error: `unknown source id: ${id}` });
+    const result = await sync(src, { fullBlobs: !!fullBlobs });
+    probeCache = null;
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ------------------------------------------------------------------------- *
+ * Compose: GUI form -> real Actions workflow file in a chosen fork.
+ *
+ * This is the link between the front end and GitHub Actions. The GUI never
+ * dispatches a hand-written workflow; it composes one from the spec, validates
+ * it, and writes it to the fork through the API. Only then is the fork
+ * dispatchable (see fork-binding.dispatchRefusal).
+ * ------------------------------------------------------------------------- */
+
+function ghToken(): string | undefined {
+  return process.env.GITHUB_TOKEN || process.env.GITHUB_CLIENT_SECRET || undefined;
+}
+
+async function gh(route: string, init: RequestInit = {}): Promise<{ status: number; body: any }> {
+  const token = ghToken();
+  if (!token) {
+    return { status: 0, body: { message: "no GitHub token configured (set GITHUB_TOKEN)" } };
+  }
+  const res = await fetch(`https://api.github.com${route}`, {
+    ...init,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "anyrealm-builder",
+      ...(init.headers ?? {}),
+    },
+  });
+  const text = await res.text();
+  let body: any = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  return { status: res.status, body };
+}
+
+// Which forks the builder knows about, and whether each is dispatchable.
+app.get("/api/forks", (_req, res) => {
+  res.json({
+    tokenConfigured: !!ghToken(),
+    forks: listBindings().map((b) => ({ ...b, dispatchable: dispatchRefusal(b.owner, b.repo) === null })),
+  });
+});
+
+/**
+ * Fill out chain slots from the toolchain catalog.
+ *
+ * A slot may arrive as a plain string id, which keeps the API usable by hand
+ * without repeating repository metadata the catalog already holds.
+ */
+function resolveChain(chain: any): any {
+  let catalog: any = null;
+  try {
+    catalog = readToolchainCatalog();
+  } catch {
+    return chain;
+  }
+  const all = new Map<string, any>();
+  for (const t of catalog.toolchains ?? []) {
+    all.set(t.id, { ...t, repo: t.repo.includes("/") ? t.repo : `015stray91/${t.repo}` });
+  }
+  const resolveSlot = (v: any) => {
+    if (!v) return v;
+    if (typeof v === "string") {
+      const t = all.get(v);
+      return t ? { id: t.id, repo: t.repo, branch: t.branch, cc: t.cc, ccPath: t.bins?.[0], label: t.name, obfuscator: !!t.obfuscator } : v;
+    }
+    if (v.id && !v.repo) {
+      const t = all.get(v.id);
+      if (t) return { ...v, repo: t.repo, branch: v.branch ?? t.branch, cc: v.cc ?? t.cc, ccPath: v.ccPath ?? t.bins?.[0], label: v.label ?? t.name, obfuscator: v.obfuscator ?? !!t.obfuscator };
+    }
+    return v;
+  };
+  const out: any = { ...chain };
+  for (const role of ["userspace", "kernel", "system", "recovery", "host", "vendor", "bootloader"]) {
+    if (out[role]) out[role] = resolveSlot(out[role]);
+  }
+  if (out.extra) {
+    out.extra = Object.fromEntries(Object.entries(out.extra).map(([k, v]) => [k, resolveSlot(v)]));
+  }
+  // `userspace` is the fallback for every role, so it must exist and must not
+  // be an obfuscator unless the caller really means it for every stage.
+  if (!out.userspace) out.userspace = out.system ?? out.kernel ?? out.host;
+  return out;
+}
+
+// Compose a spec into a workflow file. Without commit=true this only returns
+// the file so the user can read it; with commit=true it is written to the fork.
+app.post("/api/compose", async (req, res) => {
+  const { spec, target, commit, createPr } = req.body ?? {};
+  try {
+    if (!spec) return res.status(400).json({ error: "spec is required" });
+    const t = validateTarget(target ?? {});
+
+    // Resolve chain slots sent as bare toolchain ids. The UI sends full slots,
+    // but an API caller should be able to say { kernel: "clang-12-ndk" } and
+    // have the catalog fill in the repo and branch.
+    if (spec.chain) spec.chain = resolveChain(spec.chain);
+
+    // Refuse an obfuscator that would land on kernel code, before generating
+    // anything. This is a 422 rather than a warning because the failure mode is
+    // a boot-looping image, not a build error.
+    const refusal = chainRefusal(spec);
+    if (refusal) return res.status(422).json({ error: refusal, refused: true });
+
+    const composed = composeWorkflow(spec);
+
+    if (!composed.validation.ok) {
+      return res.status(422).json({
+        error: "generated workflow is not valid; refusing to write it",
+        errors: composed.validation.errors,
+        warnings: composed.validation.warnings,
+        yaml: composed.yaml,
+      });
+    }
+
+    if (!commit) {
+      return res.json({
+        fileName: composed.fileName,
+        yaml: composed.yaml,
+        validation: composed.validation,
+        target: t,
+        committed: false,
+      });
+    }
+
+    // Committing needs a token. A fork is its own repo, so the write goes to
+    // the fork's owner, never to this project -- that is the "handled
+    // separately by the fork account" rule.
+    if (!ghToken()) {
+      return res.status(401).json({
+        error: "committing a workflow needs GITHUB_TOKEN; the composed file is returned instead",
+        fileName: composed.fileName,
+        yaml: composed.yaml,
+        validation: composed.validation,
+        target: t,
+        committed: false,
+      });
+    }
+
+    const wfPath = `.github/workflows/${composed.fileName}`;
+    const existing = await gh(`/repos/${t.owner}/${t.repo}/contents/${wfPath}?ref=${encodeURIComponent(t.ref!)}`);
+    const sha = existing.status === 200 ? existing.body?.sha : undefined;
+    if (existing.status !== 200 && existing.status !== 404) {
+      return res.status(502).json({
+        error: `cannot read ${wfPath} in ${t.owner}/${t.repo}: ${existing.status} ${existing.body?.message ?? ""}`,
+        fileName: composed.fileName,
+        yaml: composed.yaml,
+      });
+    }
+
+    const message = `anyrealm: compose ${spec.edition} build workflow from the builder`;
+
+    // A fork usually cannot push to the base branch of a repo it does not own,
+    // so prefer a branch + PR when asked.
+    let writeRef = t.ref!;
+    let prUrl: string | undefined;
+    if (createPr) {
+      const branch = `anyrealm/compose-${Date.now().toString(36)}`;
+      const base = await gh(`/repos/${t.owner}/${t.repo}/git/ref/heads/${encodeURIComponent(t.ref!)}`);
+      if (base.status !== 200) {
+        return res.status(502).json({ error: `cannot read base branch ${t.ref}: ${base.body?.message ?? base.status}` });
+      }
+      const created = await gh(`/repos/${t.owner}/${t.repo}/git/refs`, {
+        method: "POST",
+        body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: base.body.object.sha }),
+      });
+      if (created.status !== 201) {
+        return res.status(502).json({ error: `cannot create branch: ${created.body?.message ?? created.status}` });
+      }
+      writeRef = branch;
+    }
+
+    const put = await gh(`/repos/${t.owner}/${t.repo}/contents/${wfPath}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        message,
+        content: Buffer.from(composed.yaml, "utf-8").toString("base64"),
+        branch: writeRef,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+    if (put.status !== 200 && put.status !== 201) {
+      return res.status(502).json({
+        error: `cannot write ${wfPath} to ${t.owner}/${t.repo}: ${put.status} ${put.body?.message ?? ""}`,
+        fileName: composed.fileName,
+        yaml: composed.yaml,
+      });
+    }
+
+    if (createPr) {
+      const pr = await gh(`/repos/${t.owner}/${t.repo}/pulls`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: `anyrealm: compose ${spec.edition} build workflow`,
+          head: writeRef,
+          base: t.ref,
+          body: [
+            "Composed in the AnyRealm builder.",
+            "",
+            `- edition: \`${spec.edition}\``,
+            spec.device?.codename ? `- device: \`${spec.device.codename}\`` : "",
+            spec.kernel ? `- kernel: ${spec.kernel.name ?? spec.kernel.id}` : "",
+            "",
+            "Merge to make this fork dispatchable.",
+          ].filter(Boolean).join("\n"),
+        }),
+      });
+      if (pr.status === 201) prUrl = pr.body?.html_url;
+    }
+
+    const binding = markComposed(t.owner, t.repo, {
+      ref: t.ref,
+      workflowFile: composed.fileName,
+      edition: spec.edition,
+      forkedFrom: spec.forkedFrom,
+    });
+
+    res.json({
+      committed: true,
+      fileName: composed.fileName,
+      path: wfPath,
+      branch: writeRef,
+      prUrl,
+      validation: composed.validation,
+      target: t,
+      binding,
+      // A PR is not merged yet, so the workflow is not on the dispatchable ref.
+      note: createPr
+        ? "written to a branch; merge the pull request before dispatching"
+        : "written to the fork's branch and now dispatchable",
+    });
+  } catch (err: any) {
+    if (err instanceof ForkError) return res.status(err.status).json({ error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dispatch a composed workflow, on the fork's own account.
+app.post("/api/dispatch", async (req, res) => {
+  const { target, workflowFile, inputs } = req.body ?? {};
+  try {
+    const t = validateTarget(target ?? {});
+    const refusal = dispatchRefusal(t.owner, t.repo, workflowFile);
+    if (refusal) return res.status(409).json({ error: refusal, gated: true });
+
+    const binding = getBinding(t.owner, t.repo)!;
+    const wf = workflowFile ?? binding.workflowFile!;
+
+    if (!ghToken()) {
+      return res.status(401).json({
+        error: "no GITHUB_TOKEN configured, so the dispatch cannot be authenticated",
+        target: t,
+        workflowFile: wf,
+      });
+    }
+
+    const r = await gh(
+      `/repos/${t.owner}/${t.repo}/actions/workflows/${encodeURIComponent(wf)}/dispatches`,
+      {
+        method: "POST",
+        body: JSON.stringify({ ref: t.ref, ...(inputs ? { inputs } : {}) }),
+      },
+    );
+
+    const ok = r.status === 204;
+    recordDispatch(t.owner, t.repo, {
+      ok,
+      detail: ok ? "dispatched" : `${r.status} ${r.body?.message ?? ""}`,
+    });
+
+    if (!ok) {
+      return res.status(r.status === 0 ? 500 : r.status).json({
+        error: `dispatch failed: ${r.status} ${r.body?.message ?? ""}`.trim(),
+        hint:
+          r.status === 404
+            ? "404 here usually means the workflow file is not on that ref, or the token cannot see the repo"
+            : r.status === 422
+              ? "422 is usually an input mismatch: the workflow declares no inputs, so none may be passed"
+              : undefined,
+      });
+    }
+    res.json({
+      ok: true,
+      target: t,
+      workflowFile: wf,
+      hint: "the run appears in the fork's Actions tab within a few seconds",
+    });
+  } catch (err: any) {
+    if (err instanceof ForkError) return res.status(err.status).json({ error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ------------------------------------------------------------------------- *
+ * Firmware uploader.
+ *
+ * The user drops in the images they already have and the builder works out the
+ * rest: what container they were in, which boot layout the device uses, whether
+ * the second-stage ramdisk lives in vendor_boot, which kernel and ROM shape to
+ * build. Nothing here asks the user to know any of that.
+ * ------------------------------------------------------------------------- */
+
+function isoTimestamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+app.post("/api/firmware/dissect", async (req, res) => {
+  const { files } = req.body ?? {};
+  if (!Array.isArray(files) || files.length === 0) {
+    return res.status(400).json({ error: "files[] is required, each { name, dataBase64 }" });
+  }
+  if (files.length > 24) {
+    return res.status(413).json({ error: "at most 24 images per dissection" });
+  }
+
+  try {
+    const results: any[] = [];
+    for (const f of files) {
+      const name = String(f?.name ?? "image");
+      const b64 = String(f?.dataBase64 ?? "");
+      if (!b64) {
+        results.push({ name, ok: false, error: "no data" });
+        continue;
+      }
+      let buf: Buffer;
+      try {
+        buf = Buffer.from(b64, "base64");
+      } catch {
+        results.push({ name, ok: false, error: "not valid base64" });
+        continue;
+      }
+      if (buf.length === 0) {
+        results.push({ name, ok: false, error: "empty file" });
+        continue;
+      }
+
+      const unpacked = unpackLayers(buf);
+      const entry: any = {
+        name,
+        bytes: buf.length,
+        container: unpacked.container,
+        layers: unpacked.layers.map((l) => ({
+          container: l.container,
+          method: l.method,
+          size: l.unpackedSize,
+        })),
+        unpackedBytes: unpacked.unpackedSize,
+        notes: unpacked.notes,
+        looksLikeAndroidImage: unpacked.looksLikeAndroidImage,
+        inner: unpacked.inner,
+      };
+
+      if (unpacked.looksLikeAndroidImage) {
+        try {
+          const info = parseBootImage(unpacked.buffer);
+          entry.boot = info;
+          entry.kind = info.kind;
+        } catch (e: any) {
+          entry.ok = false;
+          entry.error = `unpacked, but the boot header did not parse: ${e.message}`;
+          results.push(entry);
+          continue;
+        }
+      } else if (unpacked.inner === "sparse") {
+        entry.kind = "sparse";
+        entry.notes = [...entry.notes, "sparse Android filesystem image; use simg2img before mounting"];
+      } else {
+        entry.kind = "unknown";
+        entry.notes = [
+          ...entry.notes,
+          "not a boot image or sparse filesystem. If this is a full factory archive, it is a zip and needs the archive path instead.",
+        ];
+      }
+
+      // Persist the image so a later build step can actually use it. Kept in
+      // /tmp on purpose: these are large and disposable.
+      try {
+        const dir = path.join(require("os").tmpdir(), "anyrealm-firmware", isoTimestamp());
+        fs.mkdirSync(dir, { recursive: true });
+        const safe = path.basename(name).replace(/[^A-Za-z0-9._-]/g, "_");
+        const saved = path.join(dir, safe);
+        fs.writeFileSync(saved, buf);
+        entry.savedPath = saved;
+        if (unpacked.buffer !== buf) {
+          const raw = path.join(dir, safe + ".unpacked");
+          fs.writeFileSync(raw, unpacked.buffer);
+          entry.unpackedPath = raw;
+        }
+      } catch (e: any) {
+        entry.notes = [...entry.notes, `could not persist the image: ${e.message}`];
+      }
+
+      entry.ok = true;
+      results.push(entry);
+    }
+
+    // Fold the per-image facts into one device verdict, which is what the build
+    // spec actually needs.
+    const device = inferDeviceShape(results);
+    res.json({ results, device });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Combine per-image facts into a single device description.
+ *
+ * The rules here encode what this project learned the hard way: a v4
+ * vendor_boot with named fragments means a two-stage ramdisk, and in that layout
+ * boot.img holds only the kernel. Getting that wrong is how a build ends up
+ * flashing a stock vendor_boot over a modified one.
+ */
+function inferDeviceShape(results: any[]) {
+  const boots = results.filter((r) => r?.boot?.kind === "boot");
+  const vendor = results.filter((r) => r?.boot?.kind === "vendor_boot");
+  const initBoot = results.filter((r) => r?.boot?.kind === "init_boot");
+  const sparse = results.filter((r) => r?.kind === "sparse");
+
+  const facts: string[] = [];
+  const nextSteps: string[] = [];
+  const warnings: string[] = [];
+
+  if (boots.length === 0 && vendor.length === 0) {
+    warnings.push("no boot or vendor_boot image found, so the kernel layout is unknown");
+    nextSteps.push("upload boot.img (and vendor_boot.img if the device has one)");
+  }
+
+  const maxHeader = Math.max(0, ...results.map((r) => r?.boot?.headerVersion ?? 0));
+  const pageSizes = Array.from(new Set(results.map((r) => r?.boot?.pageSize).filter((n) => typeof n === "number" && n > 0)));
+
+  if (maxHeader >= 3) {
+    facts.push(`GKI-era header (v${maxHeader})`);
+  } else if (maxHeader > 0) {
+    facts.push(`legacy header (v${maxHeader}) — pre-GKI, kernel and ramdisk are one image`);
+  }
+
+  for (const v of vendor) {
+    if (v.boot.twoStageRamdisk) {
+      facts.push(
+        `two-stage ramdisk: ${v.boot.fragments.length} fragment(s) in vendor_boot — the second stage is NOT in boot.img`,
+      );
+      nextSteps.push("build the kernel only and leave vendor_boot stock, as the AnyKernel zip already expects");
+    } else {
+      facts.push("vendor_boot present with a single ramdisk");
+    }
+  }
+
+  if (initBoot.length) {
+    facts.push("init_boot partition present — Android 13+ layout");
+  }
+
+  const osVersions = results.map((r) => r?.boot?.osVersion).filter((o) => o && o.major > 0);
+  if (osVersions.length) {
+    const newest = osVersions.sort((a: any, b: any) => b.major - a.major)[0];
+    facts.push(`shipped Android ${newest.major}.${newest.minor}.${newest.patch}`);
+  }
+
+  const products = Array.from(new Set(results.map((r) => r?.boot?.productName).filter(Boolean)));
+  for (const p of products) facts.push(`product: ${p}`);
+
+  const boardNames = Array.from(new Set(results.map((r) => r?.boot?.boardName).filter(Boolean)));
+  for (const b of boardNames) facts.push(`board: ${b}`);
+
+  for (const p of pageSizes) facts.push(`page size ${p}`);
+
+  if (sparse.length) {
+    facts.push(`${sparse.length} sparse filesystem image(s) — these are the system/vendor half, not the kernel`);
+  }
+
+  // A single page size across every image is the normal case; more than one
+  // usually means images from two different devices were uploaded together.
+  if (pageSizes.length > 1) {
+    warnings.push(
+      `images disagree on page size (${pageSizes.join(", ")}) — they may come from different devices`,
+    );
+  }
+
+  const arch = results.map((r) => r?.boot?.deviceHints?.arch).find(Boolean);
+  return {
+    arch: arch ?? null,
+    headerVersion: maxHeader || null,
+    gki:
+      maxHeader >= 3 ? "gki-2.0" : maxHeader > 0 ? "pre-gki" : "unknown",
+    hasVendorBoot: vendor.length > 0,
+    hasInitBoot: initBoot.length > 0,
+    twoStageRamdisk: vendor.some((v) => v.boot.twoStageRamdisk),
+    sparseImages: sparse.length,
+    facts,
+    warnings,
+    nextSteps,
+  };
+}
+
+// Which local mirrors exist and what they hold, without touching the network.
+app.get("/api/sources/mirrors", async (_req, res) => {
+  try {
+    const sources = loadCatalog(CATALOG_FILE, true);
+    res.json({
+      mirrorRoot: mirrorRoot(),
+      mirrors: await Promise.all(sources.map((s) => mirrorState(s))),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// What this host can actually do. The UI greys out panels whose tool is absent
+// instead of pretending to run them.
+app.get("/api/capabilities", (_req, res) => {
+  res.json({ tools: probeCapabilities(), platform: process.platform, arch: process.arch });
+});
+
+// ---------------------------------------------------------------------------
+// Toolchains and addons.
+//
+// The catalog is generated from the owner's own repositories and starred list,
+// and every entry was verified with `git ls-remote`. `/api/toolchains` serves it
+// grouped by language so the UI can offer a compiler per build stage, and
+// `/api/toolchains/verify` re-probes the remotes live so a renamed repo is
+// caught before a workflow is generated against it.
+// ---------------------------------------------------------------------------
+
+function readToolchainCatalog(): any {
+  const p = path.join(process.cwd(), "toolchains-catalog.json");
+  if (!fs.existsSync(p)) throw new Error("toolchains-catalog.json is missing");
+  return JSON.parse(fs.readFileSync(p, "utf8"));
+}
+
+app.get("/api/toolchains", (_req, res) => {
+  try {
+    const doc = readToolchainCatalog();
+    // Group the compilers by language family: that is how a user picking a
+    // stage thinks about it ("the system image is C++ so I can obfuscate it",
+    // "the kernel is C so I cannot").
+    const byCategory = (doc.categories ?? []).map((c: any) => ({
+      ...c,
+      toolchains: (doc.toolchains ?? []).filter((t: any) => t.category === c.id),
+    }));
+    const toolsByKind = new Map<string, any[]>();
+    for (const t of doc.tools ?? []) {
+      const k = t.kind ?? "other";
+      if (!toolsByKind.has(k)) toolsByKind.set(k, []);
+      toolsByKind.get(k)!.push(t);
+    }
+    res.json({
+      stages: doc.stages ?? [],
+      categories: byCategory,
+      toolchains: doc.toolchains ?? [],
+      chains: doc.chains ?? {},
+      tools: doc.tools ?? [],
+      toolsByKind: Object.fromEntries([...toolsByKind].sort()),
+      checked: doc._checked,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Live re-probe. Same cheap `git ls-remote` the source panel uses, run over the
+// toolchains and tools so the UI can show which remotes still answer.
+app.get("/api/toolchains/verify", async (_req, res) => {
+  try {
+    const doc = readToolchainCatalog();
+    const items: Array<{ id: string; kind: "toolchain" | "tool"; repo: string }> = [
+      ...(doc.toolchains ?? []).map((t: any) => ({ id: t.id, kind: "toolchain" as const, repo: t.repo })),
+      ...(doc.tools ?? []).map((t: any) => ({ id: t.id, kind: "tool" as const, repo: t.repo })),
+    ];
+    const results = await Promise.all(
+      items.map(async (it) => {
+        const full = it.repo.includes("/") ? it.repo : `015stray91/${it.repo}`;
+        const r = await new Promise<{ code: number; stderr: string }>((resolve) => {
+          execFile(
+            "git",
+            ["ls-remote", "--symref", `https://github.com/${full}.git`, "HEAD"],
+            { timeout: 20_000 },
+            (err, _stdout, stderr) => resolve({ code: err ? 1 : 0, stderr: stderr ?? "" }),
+          );
+        });
+        return {
+          ...it,
+          repo: full,
+          ok: r.code === 0,
+          error: r.code === 0 ? undefined : r.stderr.trim().split("\n").pop(),
+        };
+      }),
+    );
+    res.json({
+      checked: new Date().toISOString(),
+      total: results.length,
+      reachable: results.filter((r) => r.ok).length,
+      results,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Merge several extracted roots into one tree. This is the NUKI/NURFS model:
+// one userspace, several sources, no chroot at run time.
+app.post("/api/fuse", (req, res) => {
+  const { sources, rules, output, isolateRoot, dryRun } = req.body ?? {};
+  if (!Array.isArray(sources) || sources.length === 0) {
+    return res.status(400).json({ error: "sources[] is required, each { name, path, priority? }" });
+  }
+  if (!output || typeof output !== "string") {
+    return res.status(400).json({ error: "output path is required" });
+  }
+  // Merging reads arbitrary host paths, so refuse to write outside a workspace
+  // unless the caller names one explicitly. This is the one guard that stops a
+  // browser tab from filling / with copies of /usr.
+  const outAbs = path.resolve(output);
+  const allowedRoots = [process.cwd(), "/tmp", "/var/tmp"];
+  if (!allowedRoots.some((r) => outAbs === r || outAbs.startsWith(r + path.sep))) {
+    return res.status(403).json({
+      error: `output must be inside the workspace or /tmp; got ${outAbs}`,
+    });
+  }
+  try {
+    const report = fuseRootfs({
+      sources,
+      rules: Array.isArray(rules) ? rules : [],
+      output: outAbs,
+      isolateRoot,
+      dryRun: !!dryRun,
+    });
+
+    // Every fused tree is checked for second-user-space machinery before the
+    // caller is told it succeeded. A merge that produces a tree with proot or a
+    // container runtime in it has not produced an AnyRealm artefact, whatever
+    // the file counts say.
+    let invariant: ReturnType<typeof checkOneUserspace> | null = null;
+    let invariantText: string | null = null;
+    if (!dryRun) {
+      try {
+        invariant = checkOneUserspace(outAbs, { allow: Array.isArray(req.body?.allow) ? req.body.allow : [] });
+        invariantText = renderInvariantReport(invariant);
+      } catch (err: any) {
+        invariantText = `one-userspace check could not run: ${err.message}`;
+      }
+    }
+
+    res.json({ report, markdown: renderReport(report), invariant, invariantText });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Theme bridge: Glacier token CSS -> a QML theme the Lybris/Lipstick side can use.
+//
+// The token stylesheet is the input rather than tokens.json, because the JSON is
+// a partial catalog that omits the semantic alias layer every component spec
+// names. The output is numbers, not CSS: clamp() and viewport units cannot exist
+// at QML property-binding time, so they are evaluated for one concrete panel.
+// ---------------------------------------------------------------------------
+app.get("/api/theme", (req, res) => {
+  const cssPath = String(req.query.css ?? "");
+  if (!cssPath) return res.status(400).json({ error: "css query param required (path to tokens.css)" });
+  const abs = path.resolve(cssPath);
+  const allowed = [process.cwd(), "/tmp", "/var/tmp", "/home/ubuntu"];
+  if (!allowed.some((r) => abs === r || abs.startsWith(r + path.sep))) {
+    return res.status(403).json({ error: `css must be inside the workspace or /tmp; got ${abs}` });
+  }
+  try {
+    const css = fs.readFileSync(abs, "utf8");
+    const width = Number(req.query.w ?? 1080);
+    const height = Number(req.query.h ?? 2200);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return res.status(400).json({ error: "w and h must be positive numbers" });
+    }
+    const theme = req.query.theme === "light" ? "light" : "dark";
+    const report = resolveStylesheet(css, {
+      width,
+      height,
+      htmlFontPercent: req.query.font ? Number(req.query.font) : undefined,
+      densityScale: req.query.density ? Number(req.query.density) : undefined,
+      radiusScale: req.query.radius ? Number(req.query.radius) : undefined,
+      blurScale: req.query.blur ? Number(req.query.blur) : undefined,
+    }, { theme });
+    const qml = emitQmlTheme(report, { moduleName: String(req.query.module ?? "GlacierTheme") });
+    res.json({
+      report,
+      qml,
+      summary: {
+        tokens: report.tokens.length,
+        byKind: report.tokens.reduce<Record<string, number>>((a, t) => {
+          a[t.kind] = (a[t.kind] ?? 0) + 1;
+          return a;
+        }, {}),
+        unresolved: report.unresolved.length,
+        orientationSensitive: report.orientationSensitive.length,
+        theme,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Which components can this theme actually render, and which spec tokens are
+// misspelled? A component whose spec names a token nobody declares cannot be
+// fixed by choosing a different viewport, so the two cases are reported apart.
+app.post("/api/theme/bind", (req, res) => {
+  const cssPath = String(req.body?.css ?? "");
+  const specPath = String(req.body?.spec ?? "");
+  if (!cssPath || !specPath) return res.status(400).json({ error: "css and spec paths required" });
+  const allowed = [process.cwd(), "/tmp", "/var/tmp", "/home/ubuntu"];
+  const checkPath = (p: string) => {
+    const a = path.resolve(p);
+    if (!allowed.some((r) => a === r || a.startsWith(r + path.sep))) {
+      throw new Error(`path outside the workspace: ${a}`);
+    }
+    return a;
+  };
+  try {
+    const css = fs.readFileSync(checkPath(cssPath), "utf8");
+    const spec = JSON.parse(fs.readFileSync(checkPath(specPath), "utf8"));
+    const width = Number(req.body?.w ?? 1080);
+    const height = Number(req.body?.h ?? 2200);
+    const theme = req.body?.theme === "light" ? "light" : "dark";
+    const report = resolveStylesheet(css, { width, height }, { theme });
+    const components = spec.components ?? spec;
+    if (!Array.isArray(components)) {
+      return res.status(400).json({ error: "spec must contain a components array" });
+    }
+    const bindings = bindComponents(components, report);
+    const renderable = bindings.filter((b) => b.renderable).length;
+    res.json({
+      summary: {
+        total: bindings.length,
+        renderable,
+        blocked: bindings.length - renderable,
+        specDefects: bindings.filter((b) => b.specDefects.length > 0).length,
+      },
+      bindings,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check an assembled tree for a second user space. GET so it can be pointed at
+// any path from a browser or a build log.
+app.get("/api/invariant", (req, res) => {
+  const root = String(req.query.root ?? "");
+  if (!root) return res.status(400).json({ error: "root query param required" });
+  const abs = path.resolve(root);
+  const allowed = [process.cwd(), "/tmp", "/var/tmp", "/home/ubuntu"];
+  if (!allowed.some((r) => abs === r || abs.startsWith(r + path.sep))) {
+    return res.status(403).json({ error: `root must be inside the workspace or /tmp; got ${abs}` });
+  }
+  try {
+    const allow = String(req.query.allow ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const report = checkOneUserspace(abs, { allow, warnOnly: req.query.warn === "1" });
+    res.json({ report, markdown: renderInvariantReport(report) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The build chain and the image backends.
+//
+// `/api/chain/slots` is what the picker renders: ROM, distro, UX, all narrowed by
+// the previous answer. `/api/chain/plan` resolves a set of picks into the ordered
+// stages, the kernel config fragment and the firmware fusion plan, and
+// `/api/chain/backends` reports the debos/mkosi split, including the refusal to
+// pass a UKI off as NUKI.
+// ---------------------------------------------------------------------------
+
+app.get("/api/chain/slots", (req, res) => {
+  try {
+    const edition = String(req.query.edition ?? "mobile_kernel") as any;
+    const selection: Record<string, string> = {};
+    for (const k of ["base_rom", "distro", "display_owner", "shell", "theme", "packages"]) {
+      const v = req.query[k];
+      if (typeof v === "string" && v) selection[k] = v;
+    }
+    const slots = uxSlots(edition, selection);
+    res.json({ edition, slots, grouped: groupedUxChoices() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/chain/plan", (req, res) => {
+  try {
+    const { edition, selection, rootManager, firmware, board } = req.body ?? {};
+    const slots = uxSlots(edition ?? "mobile_kernel", selection ?? {});
+    const plan = planChain({ slots, rootManager, firmware, board });
+    res.json({ plan, slots });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/chain/backends", (req, res) => {
+  const structure = String(req.query.structure ?? "nuki") as Structure;
+  const format = typeof req.query.format === "string" ? req.query.format : undefined;
+  res.json({
+    backends: BACKENDS,
+    split: backendSplit(structure),
+    refusal: refuseUkiAsNuki(structure, "mkosi", format),
+    structures: ["nuki", "uki", "partitioned"],
+  });
+});
+
+// What "native", "unified" and "fused" each mean, and what the separation costs.
+// The numbers are computed rather than asserted so the claim can be checked.
+app.get("/api/fusion/economics", (_req, res) => {
+  const report = duplicationCost();
+  res.json({
+    report,
+    vocabulary: NATIVE_VS_UNIFIED,
+    properties: FUSED_PROPERTIES,
+    components: DUPLICATED,
+  });
+});
+
+app.post("/api/chain/backend/invocation", (req, res) => {
+  try {
+    const b = req.body ?? {};
+    if (b.backend === "debos") {
+      return res.json(
+        debosInvocation({
+          recipe: b.recipe,
+          artifactdir: b.artifactdir,
+          vars: b.vars,
+          scratch: b.scratch,
+          cpus: b.cpus,
+          memory: b.memory,
+          dryRun: b.dryRun,
+        }),
+      );
+    }
+    if (b.backend === "mkosi") {
+      return res.json(
+        mkosiInvocation({
+          cwd: b.cwd,
+          verb: b.verb ?? "build",
+          distribution: b.distribution,
+          release: b.release,
+          format: b.format,
+          bootable: b.bootable,
+          imageId: b.imageId,
+          packages: b.packages,
+          structure: b.structure,
+        }),
+      );
+    }
+    res.status(400).json({ error: 'backend must be "debos" or "mkosi"' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// A plain GET so the report can be opened in a browser tab.
+app.get("/api/fuse/report", (req, res) => {
+  const out = String(req.query.output ?? "");
+  if (!out) return res.status(400).json({ error: "output query param required" });
+  const manifest = path.join(path.resolve(out), ".anyrealm", "manifest.json");
+  if (!fs.existsSync(manifest)) {
+    return res.status(404).json({ error: `no fusion manifest at ${manifest}` });
+  }
+  res.type("application/json").send(fs.readFileSync(manifest, "utf-8"));
+});
+
+
 // Secure Cloud Pipeline Dispatcher
 app.post("/api/cloud/dispatch", async (req, res) => {
   const { provider, repository, taskType } = req.body;
@@ -614,7 +1599,6 @@ app.post("/api/cloud/dispatch", async (req, res) => {
 });
 
 
-import fs from "fs";
 
 // Connected profiles in-memory session database
 interface OAuthProfile {
@@ -1186,14 +2170,20 @@ wss.on("connection", (ws: WebSocket) => {
           ws.send(JSON.stringify({ type: "COMPILE_LOG", line: "[*] Dispatching compilation request..." }));
           
           const githubSecret = process.env.GITHUB_CLIENT_SECRET || process.env.GITHUB_TOKEN;
-          const owner = params?.owner || "slm91-sg";
-          const repo = params?.repo || "kiosity-appliance-os";
+          // Defaults point at this project's own repo.  They used to point at
+          // "slm91-sg/kiosity-appliance-os", which is not this org -- so the
+          // dispatch could never have fired even with a valid token.
+          const owner = params?.owner || "015stray91";
+          const repo = params?.repo || "ANYREALM-";
           
           ws.send(JSON.stringify({ type: "COMPILE_LOG", line: `[*] Auth token check: ${githubSecret ? "Found (Pre-linked security token active)" : "Not configured (Initiating local sandbox build simulation)"}` }));
           
           // Execute actual dispatch POST request in background if credentials exist
           if (githubSecret) {
-            const dispatchUrl = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/hybrid-iso.yml/dispatches`;
+            // Must match a file that actually exists in the repo.  This was
+            // "hybrid-iso.yml", which does not -- the real workflow is
+            // anyrealm-builder-iso.yml.
+            const dispatchUrl = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/anyrealm-builder-iso.yml/dispatches`;
             ws.send(JSON.stringify({ type: "COMPILE_LOG", line: `[SENDING POST] -> ${dispatchUrl}` }));
             try {
               fetch(dispatchUrl, {

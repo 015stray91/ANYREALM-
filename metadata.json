@@ -1,6 +1,8 @@
 {
-  "name": "Any Realm",
-  "description": "An interactive workspace to visually design, architect, and generate framework code, HAL services, AIDL interfaces, SELinux policies, and manage/import developer collaborators for custom operating system builds.",
+  "name": "AnyRealm Builder",
+  "description": "AnyRealm builder cockpit: design and fuse custom system services, HAL drivers, rootfs merges, super partitions and NUKI/NURFS install images. Self-hosted; Gemini is optional.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

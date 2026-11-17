@@ -1,0 +1,83 @@
+;; ---------------------------------------------------------------------------
+;; Hybrid NURFS display registration policy.
+;;
+;; The problem this solves: on a NURFS device two compositors want the screen at
+;; once. SurfaceFlinger owns the Android half; phoc (wlroots) owns the phosh /
+;; NetHunter Pro half. In stock Android only one thing may talk to the display
+;; controller, and it is SurfaceFlinger, through the Composer HAL. A second
+;; compositor that opens /dev/dri/card0 directly is not "unsupported" so much as
+;; unmodelled: there is no domain for it and no rule granting it the display
+;; device.
+;;
+;; There are three ways to get two compositors on one screen. Two of them do not
+;; need this file at all:
+;;
+;;   A. switch      SurfaceFlinger stops, phoc starts. Only one ever holds DRM.
+;;                  Clean, but the Android half is not visible while NURFS shows.
+;;   B. lease       one compositor holds the CRTC and leases a connector to the
+;;                  other via DRM lease (drmModeCreateLease). Both run, each owns
+;;                  a rectangle of the panel. This needs no display *policy*
+;;                  beyond the DRM device, and it is what these rules enable.
+;;   C. present     phoc renders offscreen, hands frames to SurfaceFlinger as a
+;;                  virtual HWC display. This needs an HWC implementation, not
+;;                  permission, so no rule here creates it.
+;;
+;; The rules below grant B. They are written for the domain a glibc compositor
+;; runs in (nurfs_glibc_t, from nurfs-dual-libc.cil), so they add nothing to any
+;; Android domain: bionic code gains no DRM access from this file.
+;; ---------------------------------------------------------------------------
+
+;; DRM and the display controller.
+(type nurfs_drm_device)
+(type nurfs_display_t)
+
+(filecon "/dev/dri(/.*)?" any (system_u object_r nurfs_drm_device ((s0) (s0))))
+(filecon "/sys/class/drm(/.*)?" any (system_u object_r nurfs_display_t ((s0) (s0))))
+
+(roletype object_r nurfs_drm_device)
+(roletype object_r nurfs_display_t)
+
+;; Opening the DRM node. ioctl is what every mode-setting call actually is:
+;; drmModeGetResources, drmModeCreateLease and the commit path are all ioctls on
+;; this file, so a compositor that cannot ioctl has no display at all.
+(allow nurfs_glibc_t nurfs_drm_device (chr_file (read write open getattr ioctl map)))
+(allow nurfs_glibc_t nurfs_display_t (dir (search read open getattr)))
+(allow nurfs_glibc_t nurfs_display_t (file (read open getattr)))
+
+;; Reading the connector/encoder state and writing back the chosen mode. These
+;; are the sysfs files wlroots queries when it builds its output list.
+(allow nurfs_glibc_t nurfs_display_t (lnk_file (read getattr)))
+(allow nurfs_glibc_t nurfs_display_t (fifo_file (read write open getattr ioctl)))
+
+;; evdev for input, without which the compositor has a screen it cannot drive.
+(type nurfs_input_device)
+(filecon "/dev/input(/.*)?" any (system_u object_r nurfs_input_device ((s0) (s0))))
+(roletype object_r nurfs_input_device)
+(allow nurfs_glibc_t nurfs_input_device (chr_file (read write open getattr ioctl map)))
+
+;; The lease itself: create, then release. `drmModeCreateLease` needs no extra
+;; SELinux permission beyond ioctl on the DRM node, but the connector's sysfs
+;; entry is written when a lease is assigned, which is the second rule.
+(allow nurfs_glibc_t nurfs_display_t (file (write create rename setattr)))
+
+;; A compositor needs its own process lifecycle and shared memory.
+(allow nurfs_glibc_t self (process (fork signal sigchld setcurrent getattr)))
+(allow nurfs_glibc_t self (shm (create read write getattr)))
+(allow nurfs_glibc_t self (unix_stream_socket (create bind connect listen accept read write getattr ioctl)))
+(allow nurfs_glibc_t devpts (chr_file (read write getattr ioctl)))
+
+;; --- what is deliberately not granted -------------------------------------
+;;
+;; No write to /dev/dri for any Android domain. SurfaceFlinger keeps the display
+;; through the Composer HAL and its existing rules; nothing here widens them.
+;;
+;; No grant of `capability sys_rawio` or `sys_admin` to the compositor. Mode
+;; setting through DRM needs neither, and granting them to reach a display would
+;; hand a compositor the ability to reprogram the whole system.
+;;
+;; No HWC rule, because a virtual HWC display is a driver and userspace HAL, not
+;; a permission. If the hybrid ends up on path C, that HAL has to be written;
+;; this policy cannot substitute for it.
+;;
+;; No `permissive nurfs_glibc_t`. If a compositor cannot start, the denials it
+;; logs name the node or ioctl that is missing, and that is the point.

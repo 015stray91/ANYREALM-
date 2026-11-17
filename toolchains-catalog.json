@@ -1,0 +1,1790 @@
+{
+  "_note": "Toolchains, tools and named chains taken from the project owner's own repositories and starred list. Every entry was verified with `git ls-remote` on 2026-11-17; anything that did not answer was left out. A toolchain is a real compiler a build can select. A tool is a utility the builder or a workflow shells out to.",
+  "_checked": "2026-11-17",
+  "_verified": "all entries answer git ls-remote",
+  "owner": "015stray91",
+  "toolchains": [
+    {
+      "id": "android-kernel-tools",
+      "name": "AOSP + Clang12 + SDCLang kernel toolkit",
+      "repo": "android-kernel-tools",
+      "url": "https://github.com/015stray91/android-kernel-tools",
+      "branch": "tools",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "arm"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "Toolchain wrapper set for kernel builds, bundling the AOSP GCC and Clang 12 and Snapdragon clang 8.0.6.",
+      "bins": [
+        "bin/clang",
+        "bin/arm-linux-androideabi-gcc"
+      ],
+      "category": "clang",
+      "categoryLabel": "C / C++ (Clang)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "external-llvm",
+      "name": "AOSP external/llvm",
+      "repo": "external-llvm",
+      "url": "https://github.com/015stray91/external-llvm",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "AOSP's in-tree llvm project, for building the toolchain itself rather than consuming a prebuilt.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "clang",
+      "categoryLabel": "C / C++ (Clang)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "clang-r346389b",
+      "name": "AOSP prebuilt Clang r346389b",
+      "repo": "clang",
+      "url": "https://github.com/015stray91/clang",
+      "branch": "clang-r346389b",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "arm",
+        "x86_64"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "The clang AOSP shipped around Android 9/10; what LineageOS-era trees and early 5.10 kernels were tested against.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "clang",
+      "categoryLabel": "C / C++ (Clang)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "clang-12-ndk",
+      "name": "Clang 12 NDK toolchain",
+      "repo": "clang-12-ndk",
+      "url": "https://github.com/015stray91/clang-12-ndk",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "Clang 12 for aarch64. Good default for 5.10: modern enough for current Android, old enough not to trip old kernel code.",
+      "bins": [
+        "bin/clang",
+        "bin/aarch64-linux-gnu-ld"
+      ],
+      "category": "clang",
+      "categoryLabel": "C / C++ (Clang)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "gcc-arm-eabi-4.8",
+      "name": "ARM GCC 4.8 (arm-eabi)",
+      "repo": "prebuilts-gcc-linux-x86-arm-cit-arm-eabi-4.8",
+      "url": "https://github.com/015stray91/prebuilts-gcc-linux-x86-arm-cit-arm-eabi-4.8",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "arm"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "32-bit ARM GCC from the pre-GKI era. Needed for 3.x/4.x trees whose asm a modern clang refuses.",
+      "bins": [
+        "bin/arm-eabi-gcc"
+      ],
+      "category": "gcc",
+      "categoryLabel": "C / C++ (GCC)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "gimple-obfuscator",
+      "name": "GIMPLE GCC obfuscator",
+      "repo": "gimple-GCC-obfuscation-",
+      "url": "https://github.com/015stray91/gimple-GCC-obfuscation-",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "aarch64",
+        "arm",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "GIMPLE-level obfuscation for C/C++/Go. Carries an incomplete 4.1.0 tree, so only its `sub` pass is safe.",
+      "bins": [
+        "bin/gcc"
+      ],
+      "category": "gcc",
+      "categoryLabel": "C / C++ (GCC)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "GOAT-Plugs",
+      "name": "GOAT obfuscation augmentation",
+      "repo": "GOAT-Plugs",
+      "url": "https://github.com/015stray91/GOAT-Plugs",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "aarch64",
+        "arm",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "GCC obfuscation augmentation tools -- the plugins, not the compiler. Pairs with gimple-obfuscator.",
+      "bins": [
+        "bin/gcc"
+      ],
+      "category": "gcc",
+      "categoryLabel": "C / C++ (GCC)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "toolchain-arm",
+      "name": "Prebuilt GNU ARM toolchain",
+      "repo": "toolchain-arm",
+      "url": "https://github.com/015stray91/toolchain-arm",
+      "branch": "main",
+      "cc": "gcc",
+      "targets": [
+        "arm",
+        "aarch64"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "Prebuilt GNU cross toolchain for Arm CPUs; the plain-GCC alternative to the AOSP prebuilts.",
+      "bins": [
+        "bin/arm-linux-gnueabihf-gcc",
+        "bin/aarch64-linux-gnu-gcc"
+      ],
+      "category": "gcc",
+      "categoryLabel": "C / C++ (GCC)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "cpullvm-toolchain",
+      "name": "Qualcomm CPU LLVM toolchain",
+      "repo": "cpullvm-toolchain",
+      "url": "https://github.com/015stray91/cpullvm-toolchain",
+      "branch": "qualcomm-software",
+      "cc": "clang",
+      "targets": [
+        "aarch64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Qualcomm's LLVM for CPU-side user space (the sibling of SDCLang for DSP/hexagon work).",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-vendor",
+      "categoryLabel": "Qualcomm LLVM",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "sdclang",
+      "name": "Snapdragon LLVM (SDCLang)",
+      "repo": "android_device_dragons_SDCLang",
+      "url": "https://github.com/015stray91/android_device_dragons_SDCLang",
+      "branch": "O.1",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "arm"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "Qualcomm's optimised LLVM. Better code on sm* SoCs, and it does build kernels -- but kernel patches must match its version.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-vendor",
+      "categoryLabel": "Qualcomm LLVM",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "llvm-prebuilt",
+      "name": "LLVM prebuilt distribution",
+      "repo": "llvm-prebuilt",
+      "url": "https://github.com/015stray91/llvm-prebuilt",
+      "branch": "master",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64",
+        "arm"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "Stock LLVM prebuilt, several versions. The unmodified baseline every obfuscator fork is diffed against.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm",
+      "categoryLabel": "LLVM / toolchain base",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "llvm-full",
+      "name": "LLVM unofficial prebuild (wide API)",
+      "repo": "llvm-full",
+      "url": "https://github.com/015stray91/llvm-full",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64",
+        "arm"
+      ],
+      "kernel_ok": true,
+      "obfuscator": false,
+      "note": "Unofficial LLVM build with a broader exported API surface -- needed when a pass plugin expects internals a release build strips.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm",
+      "categoryLabel": "LLVM / toolchain base",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "cpp-toolchain",
+      "name": "Portable C++ cross toolchain",
+      "repo": "cpp-toolchain",
+      "url": "https://github.com/015stray91/cpp-toolchain",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": false,
+      "note": "Portable C++ cross compiler for user space and host tools. Not a kernel toolchain.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "cpp",
+      "categoryLabel": "C / C++ (portable)",
+      "language": "C/C++",
+      "kernel_safe": true
+    },
+    {
+      "id": "Hallucina",
+      "name": "Hallucina (LLVM obfuscation)",
+      "repo": "Hallucina",
+      "url": "https://github.com/015stray91/Hallucina",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "LLVM-based obfuscation aimed at confusing automated analysers rather than humans.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "HikariSummer",
+      "name": "Hikari for LLVM 12",
+      "repo": "HikariSummer",
+      "url": "https://github.com/015stray91/HikariSummer",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Naville's HikariObfuscator for LLVM 12; the fork that pairs with the Clang-12 era NDKs.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "Hikari-LLVM19",
+      "name": "Hikari for LLVM 19-20",
+      "repo": "Hikari-LLVM19",
+      "url": "https://github.com/015stray91/Hikari-LLVM19",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Hikari obfuscator for LLVM 19/20 -- stronger anti-debug and indirect-branch passes than plain OLLVM.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "Hikarust",
+      "name": "Hikarust (out-of-tree pass plugin)",
+      "repo": "Hikarust",
+      "url": "https://github.com/015stray91/Hikarust",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Out-of-tree, dynamically loadable Hikari pass -- no need to rebuild LLVM to use it.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "kagura",
+      "name": "Kagura (anti-tamper passes)",
+      "repo": "kagura",
+      "url": "https://github.com/015stray91/kagura",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "LLVM pass plugin for native code obfuscation, CFG integrity and anti-tamper.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "xollvm",
+      "name": "Modern LLVM obfuscator",
+      "repo": "xollvm",
+      "url": "https://github.com/015stray91/xollvm",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Second modern OLLVM-family fork; differing pass defaults, useful as a cross-check.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "ollvm",
+      "name": "Modern OLLVM (LLVM 22)",
+      "repo": "ollvm",
+      "url": "https://github.com/015stray91/ollvm",
+      "branch": "ollvm-22.x",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "OLLVM rebased onto LLVM 22. Newest OLLVM here, so it pairs with modern NDK user space.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "goron",
+      "name": "NDK toolchains with LLVM obfuscator",
+      "repo": "goron",
+      "url": "https://github.com/015stray91/goron",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "arm"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Android NDK toolchains with the obfuscator baked into the driver. User space only.",
+      "bins": [
+        "bin/clang",
+        "bin/llvm-ar"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "o-mvll",
+      "name": "O-MVLL (pass-based)",
+      "repo": "o-mvll",
+      "url": "https://github.com/015stray91/o-mvll",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Pass-based obfuscator that attaches to a stock clang build, so no LLVM fork is required.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "ObfuscatorNDK",
+      "name": "Obfuscator NDK 23",
+      "repo": "ObfuscatorNDK",
+      "url": "https://github.com/015stray91/ObfuscatorNDK",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "arm"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Android Obfuscator NDK 23. Prepackaged, Windows-oriented.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "obfuscator",
+      "name": "Obfuscator-LLVM (optimised)",
+      "repo": "obfuscator",
+      "url": "https://github.com/015stray91/obfuscator",
+      "branch": "master",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64",
+        "arm"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "A slightly optimised OLLVM fork -- the same passes with less compile-time cost.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "obfuscator-llvm",
+      "name": "Obfuscator-LLVM (plugin pass)",
+      "repo": "obfuscator-llvm",
+      "url": "https://github.com/015stray91/obfuscator-llvm",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64",
+        "arm"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "OLLVM shipped as a loadable pass plugin. Has to be loaded into a matching LLVM, not used standalone.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "Obscura",
+      "name": "Obscura (Hikari/O-MVLL successor)",
+      "repo": "Obscura",
+      "url": "https://github.com/015stray91/Obscura",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Aim is to replace Hikari and O-MVLL, which have stalled; newer and less battle-tested.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "docker-ollvm",
+      "name": "OLLVM packaged for the NDK",
+      "repo": "docker-ollvm",
+      "url": "https://github.com/015stray91/docker-ollvm",
+      "branch": "master",
+      "cc": "clang",
+      "targets": [
+        "aarch64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Easily build and package Obfuscator-LLVM into an Android NDK. The container route to the same passes.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "Pluto-Obfuscator",
+      "name": "Pluto (LLVM 12.0.1)",
+      "repo": "Pluto-Obfuscator",
+      "url": "https://github.com/015stray91/Pluto-Obfuscator",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Obfuscator based on LLVM 12.0.1 with control-flow flattening and bogus-flow passes.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "Polaris-Obfuscator",
+      "name": "Polaris (LLVM)",
+      "repo": "Polaris-Obfuscator",
+      "url": "https://github.com/015stray91/Polaris-Obfuscator",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "LLVM-based obfuscator protecting software at several levels of intensity.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "zyrox",
+      "name": "Zyrox (compile-time LLVM plugin)",
+      "repo": "zyrox",
+      "url": "https://github.com/015stray91/zyrox",
+      "branch": "master",
+      "cc": "clang",
+      "targets": [
+        "aarch64",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "LLVM-based compile-time obfuscation plugin. Smallest scope of the obfuscator families.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "llvm-obf",
+      "categoryLabel": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernel_safe": false
+    },
+    {
+      "id": "obfus.h",
+      "name": "obfus.h (compile-time macros)",
+      "repo": "obfus.h",
+      "url": "https://github.com/015stray91/obfus.h",
+      "branch": "main",
+      "cc": "tcc",
+      "targets": [
+        "x86",
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Macro header for compile-time C obfuscation with tcc on x86. Not an Android chain.",
+      "bins": [
+        "bin/tcc"
+      ],
+      "category": "obf-source",
+      "categoryLabel": "Source-level / header obfuscators",
+      "language": "C/C++",
+      "kernel_safe": false
+    },
+    {
+      "id": "Obfusk8",
+      "name": "Obfusk8 (header-only C++17)",
+      "repo": "Obfusk8",
+      "url": "https://github.com/015stray91/Obfusk8",
+      "branch": "main",
+      "cc": "clang",
+      "targets": [
+        "any"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Header-only C++17 obfuscation library. Nothing to install; drop it in and include it.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "obf-source",
+      "categoryLabel": "Source-level / header obfuscators",
+      "language": "C/C++",
+      "kernel_safe": false
+    },
+    {
+      "id": "smudgeC",
+      "name": "smudgeC (source-to-source)",
+      "repo": "smudgeC",
+      "url": "https://github.com/015stray91/smudgeC",
+      "branch": "main",
+      "cc": "gcc",
+      "targets": [
+        "any"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Source-to-source C obfuscator. Runs before the compiler, so it works with any chain underneath.",
+      "bins": [
+        "bin/gcc"
+      ],
+      "category": "obf-source",
+      "categoryLabel": "Source-level / header obfuscators",
+      "language": "C/C++",
+      "kernel_safe": false
+    },
+    {
+      "id": "Khaos",
+      "name": "Khaos (inter-procedural)",
+      "repo": "Khaos-master",
+      "url": "https://github.com/015stray91/Khaos-master",
+      "branch": "khaos_with_hidden",
+      "cc": "clang",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Inter-procedural obfuscation from the Khaos paper, with a hidden branch published here for study.",
+      "bins": [
+        "bin/clang"
+      ],
+      "category": "obf-other",
+      "categoryLabel": "Other obfuscators",
+      "language": "C",
+      "kernel_safe": false
+    },
+    {
+      "id": "movfuscator",
+      "name": "M/o/Vfuscator",
+      "repo": "movfuscator",
+      "url": "https://github.com/015stray91/movfuscator",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "x86_64",
+        "x86"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "The single-instruction C compiler -- everything becomes MOV. A curiosity, x86 user space only.",
+      "bins": [
+        "bin/gcc"
+      ],
+      "category": "obf-other",
+      "categoryLabel": "Other obfuscators",
+      "language": "C",
+      "kernel_safe": false
+    },
+    {
+      "id": "gas-obfuscation",
+      "name": "x86-64 asm obfuscation",
+      "repo": "gas-obfuscation",
+      "url": "https://github.com/015stray91/gas-obfuscation",
+      "branch": "master",
+      "cc": "gcc",
+      "targets": [
+        "x86_64"
+      ],
+      "kernel_ok": false,
+      "obfuscator": true,
+      "note": "Deliberately inefficient x86-64 assembly obfuscation. Demonstration scale.",
+      "bins": [
+        "bin/gcc"
+      ],
+      "category": "obf-other",
+      "categoryLabel": "Other obfuscators",
+      "language": "C",
+      "kernel_safe": false
+    }
+  ],
+  "tools": [
+    {
+      "id": "aik",
+      "name": "Android Image Kitchen",
+      "repo": "Android-Image-Kitchen",
+      "url": "https://github.com/015stray91/Android-Image-Kitchen",
+      "branch": "AIK-mobile",
+      "kind": "image",
+      "use": "unpack/repack boot and recovery images",
+      "builder_use": "fallback for boot images whose header the builder does not recognise"
+    },
+    {
+      "id": "aosp-image-tools",
+      "name": "AOSP image tools",
+      "repo": "aosp-image-tools",
+      "url": "https://github.com/015stray91/aosp-image-tools",
+      "branch": "master",
+      "kind": "image",
+      "use": "unpack/repack super.img",
+      "builder_use": "super partition work for ROM builds"
+    },
+    {
+      "id": "android-image-tools",
+      "name": "Android_Image_Tools",
+      "repo": "Android_Image_Tools",
+      "url": "https://github.com/015stray91/Android_Image_Tools",
+      "branch": "next-stable",
+      "kind": "image",
+      "use": "CRB Kitchen for Linux: unpack/repack everything",
+      "builder_use": "shell-side equivalent of the builder's own extractor"
+    },
+    {
+      "id": "aosp15-partition-tools",
+      "name": "aosp15 partition tools",
+      "repo": "aosp15_partition_tools",
+      "url": "https://github.com/015stray91/aosp15_partition_tools",
+      "branch": "main",
+      "kind": "image",
+      "use": "statically linked lpmake/lpunpack/ext2 tools",
+      "builder_use": "super.img on runners without the SDK"
+    },
+    {
+      "id": "partition-tools-bin",
+      "name": "partition tools binaries",
+      "repo": "android-partition-tools_prebuilt_binaries",
+      "url": "https://github.com/015stray91/android-partition-tools_prebuilt_binaries",
+      "branch": "main",
+      "kind": "image",
+      "use": "prebuilt partition tools for editing super.img",
+      "builder_use": "no-build fallback for super.img work"
+    },
+    {
+      "id": "lpunpack-lpmake",
+      "name": "lpunpack_and_lpmake",
+      "repo": "lpunpack_and_lpmake",
+      "url": "https://github.com/015stray91/lpunpack_and_lpmake",
+      "branch": "android11",
+      "kind": "image",
+      "use": "split and build logical partitions",
+      "builder_use": "older super.img layouts"
+    },
+    {
+      "id": "firmware-extractor",
+      "name": "Firmware_extractor",
+      "repo": "Firmware_extractor",
+      "url": "https://github.com/015stray91/Firmware_extractor",
+      "branch": "master",
+      "kind": "firmware",
+      "use": "extract OEM archives: payload.bin, .kdz, .ozip",
+      "builder_use": "the archive half the uploader does not handle"
+    },
+    {
+      "id": "qfil",
+      "name": "QFlashTool (Qualcomm)",
+      "repo": "QFlashTool-Qualcomm-Flash-Tool",
+      "url": "https://github.com/015stray91/QFlashTool-Qualcomm-Flash-Tool",
+      "branch": "main",
+      "kind": "flash",
+      "use": "flash Qualcomm devices over EDL/fastboot",
+      "builder_use": "unbrick path; not part of a normal build"
+    },
+    {
+      "id": "qdl",
+      "name": "qdl",
+      "repo": "danielkutik/qdl",
+      "url": "https://github.com/danielkutik/qdl",
+      "branch": "master",
+      "kind": "flash",
+      "use": "Qualcomm EDL downloader (C)",
+      "builder_use": "low-level EDL flashing from Linux"
+    },
+    {
+      "id": "qdl-eugenefil",
+      "name": "qdl (eugenefil)",
+      "repo": "eugenefil/qdl",
+      "url": "https://github.com/eugenefil/qdl",
+      "branch": "master",
+      "kind": "flash",
+      "use": "Qualcomm Emergency Download tool",
+      "builder_use": "alternative EDL client with different firehose handling"
+    },
+    {
+      "id": "moto-flash-tool",
+      "name": "moto_flash_tool",
+      "repo": "Vachounet/moto_flash_tool",
+      "url": "https://github.com/Vachounet/moto_flash_tool",
+      "branch": "master",
+      "kind": "flash",
+      "use": "CLI to flash Motorola devices from flashfile.xml",
+      "builder_use": "converting a Motorola firmware package into flash steps"
+    },
+    {
+      "id": "minidump-parser",
+      "name": "Qualcomm minidump parser",
+      "repo": "minidump-parser",
+      "url": "https://github.com/015stray91/minidump-parser",
+      "branch": "main",
+      "kind": "debug",
+      "use": "parse Raw_Dmp! crash dumps",
+      "builder_use": "diagnosing a boot loop from the device's own dump"
+    },
+    {
+      "id": "abootimg-ggr",
+      "name": "abootimg",
+      "repo": "ggrandou/abootimg",
+      "url": "https://github.com/ggrandou/abootimg",
+      "branch": "master",
+      "kind": "image",
+      "use": "read/write/update Android boot images",
+      "builder_use": "second implementation to cross-check header edits"
+    },
+    {
+      "id": "abootimg-gro",
+      "name": "abootimg (groessler)",
+      "repo": "groessler/abootimg",
+      "url": "https://github.com/groessler/abootimg",
+      "branch": "master",
+      "kind": "image",
+      "use": "boot image manipulator",
+      "builder_use": "spare implementation when one refuses an image"
+    },
+    {
+      "id": "anykernel3",
+      "name": "AnyKernel3",
+      "repo": "osm0sis/AnyKernel3",
+      "url": "https://github.com/osm0sis/AnyKernel3",
+      "branch": "master",
+      "kind": "flash",
+      "use": "flash a kernel over a stock boot image",
+      "builder_use": "the flashable zip around the mobile kernel"
+    },
+    {
+      "id": "anykernel-genevn",
+      "name": "Genevn AnyKernel",
+      "repo": "Genevn-sm6450_AnyKernel",
+      "url": "https://github.com/015stray91/Genevn-sm6450_AnyKernel",
+      "branch": "master",
+      "kind": "flash",
+      "use": "AnyKernel tailored to sm6450 genevn",
+      "builder_use": "the mobile edition's flashing wrapper (kernel only; vendor_boot stays stock)"
+    },
+    {
+      "id": "fastboot-adb",
+      "name": "fastboot/adb binaries",
+      "repo": "shakalaca/fastboot-adb-android",
+      "url": "https://github.com/shakalaca/fastboot-adb-android",
+      "branch": "master",
+      "kind": "flash",
+      "use": "adb and fastboot binaries",
+      "builder_use": "runner-side flashing without the SDK"
+    },
+    {
+      "id": "dtc",
+      "name": "Device Tree Compiler (dgibson)",
+      "repo": "dgibson/dtc",
+      "url": "https://github.com/dgibson/dtc",
+      "branch": "main",
+      "kind": "devicetree",
+      "use": "compile/decompile device trees",
+      "builder_use": "dtb work; the canonical upstream dtc"
+    },
+    {
+      "id": "dtc-local",
+      "name": "Device Tree Compiler (fork)",
+      "repo": "dtc",
+      "url": "https://github.com/015stray91/dtc",
+      "branch": "main",
+      "kind": "devicetree",
+      "use": "dtc fork kept beside the kernel trees",
+      "builder_use": "matches the dtc the vendor trees were built with"
+    },
+    {
+      "id": "fdt",
+      "name": "Downstream devicetrees",
+      "repo": "fdt",
+      "url": "https://github.com/015stray91/fdt",
+      "branch": "main",
+      "kind": "devicetree",
+      "use": "devicetrees extracted from MIUI/HyperOS/Lineage",
+      "builder_use": "source of the real device tree for the uploaded firmware"
+    },
+    {
+      "id": "kernel-devicetree",
+      "name": "Motorola misc devicetree",
+      "repo": "kernel-devicetree",
+      "url": "https://github.com/015stray91/kernel-devicetree",
+      "branch": "android-14-release-u1tgns34.42-86-2-32",
+      "kind": "devicetree",
+      "use": "misc devicetree sources from the vendor tree",
+      "builder_use": "device-matched dts for genevn-era builds"
+    },
+    {
+      "id": "dt-audio",
+      "name": "Motorola audio devicetree",
+      "repo": "kernel-audio-devicetree",
+      "url": "https://github.com/015stray91/kernel-audio-devicetree",
+      "branch": "android-13-release-t1sh33.35-23-20",
+      "kind": "devicetree",
+      "use": "audio devicetree files",
+      "builder_use": "audio nodes when a fused tree loses them"
+    },
+    {
+      "id": "dt-display",
+      "name": "Motorola display devicetree",
+      "repo": "kernel-display-devicetree",
+      "url": "https://github.com/015stray91/kernel-display-devicetree",
+      "branch": "android-10-release-qzk",
+      "kind": "devicetree",
+      "use": "display devicetree files",
+      "builder_use": "panel nodes for the desktop-on-mobile path"
+    },
+    {
+      "id": "dt-camera",
+      "name": "Motorola camera devicetree",
+      "repo": "kernel-camera-devicetree",
+      "url": "https://github.com/015stray91/kernel-camera-devicetree",
+      "branch": "android-10-release-qzk",
+      "kind": "devicetree",
+      "use": "camera devicetree files",
+      "builder_use": "camera nodes for the NetHunter Pro user space"
+    },
+    {
+      "id": "dt-video",
+      "name": "Motorola video devicetree",
+      "repo": "kernel-video-devicetree",
+      "url": "https://github.com/015stray91/kernel-video-devicetree",
+      "branch": "android-13-release-t1sh33.35-23-20",
+      "kind": "devicetree",
+      "use": "video devicetree files",
+      "builder_use": "video decode nodes"
+    },
+    {
+      "id": "dt-mmrm",
+      "name": "Motorola MMRM devicetree",
+      "repo": "kernel-mmrm-devicetree",
+      "url": "https://github.com/015stray91/kernel-mmrm-devicetree",
+      "branch": "android-13-release-t1sh33.35-23-20",
+      "kind": "devicetree",
+      "use": "multimedia resource manager devicetree",
+      "builder_use": "MMRM nodes for the fused user space"
+    },
+    {
+      "id": "zeromount",
+      "name": "ZeroMount",
+      "repo": "zeromount",
+      "url": "https://github.com/015stray91/zeromount",
+      "branch": "master",
+      "kind": "kernel",
+      "use": "mountless module loading at the VFS path layer",
+      "builder_use": "the ZeroMount half of the kernel feature set"
+    },
+    {
+      "id": "apatch",
+      "name": "APatch",
+      "repo": "APatch",
+      "url": "https://github.com/015stray91/APatch",
+      "branch": "main",
+      "kind": "kernel",
+      "use": "kernel patching and root",
+      "builder_use": "alternative root path; the build targets KSU-Next instead"
+    },
+    {
+      "id": "mksu-susfs",
+      "name": "MKSU + SUSFS",
+      "repo": "MKSU-SUSFS",
+      "url": "https://github.com/015stray91/MKSU-SUSFS",
+      "branch": "main",
+      "kind": "kernel",
+      "use": "KernelSU with SUSFS",
+      "builder_use": "reference for the SUSFS half"
+    },
+    {
+      "id": "gki-ksu-susfs",
+      "name": "GKI 2.0 KSU + SUSFS",
+      "repo": "GKI_KernelSU_SUSFS",
+      "url": "https://github.com/015stray91/GKI_KernelSU_SUSFS",
+      "branch": "main",
+      "kind": "kernel",
+      "use": "GKI 5.10+ kernels with KernelSU and SUSFS",
+      "builder_use": "the GKI-side reference build of the same feature set"
+    },
+    {
+      "id": "kpatch-next",
+      "name": "KPatch-Next module",
+      "repo": "KPatch-Next-Module",
+      "url": "https://github.com/015stray91/KPatch-Next-Module",
+      "branch": "main",
+      "kind": "kernel",
+      "use": "standalone KPM support for Magisk/KSU",
+      "builder_use": "kernel module loading without a full rebuild"
+    },
+    {
+      "id": "ksu-next",
+      "name": "KernelSU-Next",
+      "repo": "KernelSU-Next-",
+      "url": "https://github.com/015stray91/KernelSU-Next-",
+      "branch": "dev",
+      "kind": "kernel",
+      "use": "advanced kernel-based root, Next fork",
+      "builder_use": "the root implementation the build pins"
+    },
+    {
+      "id": "ksu-builder",
+      "name": "KernelSU_Builder",
+      "repo": "KernelSU_Builder",
+      "url": "https://github.com/015stray91/KernelSU_Builder",
+      "branch": "master",
+      "kind": "kernel",
+      "use": "build KernelSU into a kernel",
+      "builder_use": "reference for the KSU integration step"
+    },
+    {
+      "id": "lxc-ksu-action",
+      "name": "LXC KernelSU action",
+      "repo": "LXC_KernelSU_Action",
+      "url": "https://github.com/015stray91/LXC_KernelSU_Action",
+      "branch": "main",
+      "kind": "kernel",
+      "use": "build LXC + KernelSU into a kernel",
+      "builder_use": "container support in the fused kernel"
+    },
+    {
+      "id": "kernel-build-tools",
+      "name": "Motorola kernel build tools",
+      "repo": "kernel-prebuilts-kernel-build-tools",
+      "url": "https://github.com/015stray91/kernel-prebuilts-kernel-build-tools",
+      "branch": "android-14-release-u3uc34.63-31-6",
+      "kind": "kernel",
+      "use": "prebuilt build scripts from the Motorola tree",
+      "builder_use": "the glue AR-NUKI-genevn deliberately dropped: reference only"
+    },
+    {
+      "id": "nethunter-binaries",
+      "name": "NetHunter static binaries",
+      "repo": "nethunter-static-binaries",
+      "url": "https://github.com/015stray91/nethunter-static-binaries",
+      "branch": "master",
+      "kind": "userspace",
+      "use": "statically linked binaries NetHunter expects",
+      "builder_use": "populating the mobile user space without a second package manager"
+    },
+    {
+      "id": "gnu-utils-android",
+      "name": "GNU utils for Android build",
+      "repo": "GNU-Utils-For-Android-Build-Script",
+      "url": "https://github.com/015stray91/GNU-Utils-For-Android-Build-Script",
+      "branch": "master",
+      "kind": "userspace",
+      "use": "build coreutils/findutils for Android",
+      "builder_use": "filling in the GNU tools bionic lacks"
+    },
+    {
+      "id": "busybox",
+      "name": "Brutal busybox",
+      "repo": "Brutal_busybox",
+      "url": "https://github.com/015stray91/Brutal_busybox",
+      "branch": "master",
+      "kind": "userspace",
+      "use": "all applets, max optimisation",
+      "builder_use": "rescue shell inside the fused image"
+    },
+    {
+      "id": "static-binaries",
+      "name": "static-binaries",
+      "repo": "static-binaries",
+      "url": "https://github.com/015stray91/static-binaries",
+      "branch": "master",
+      "kind": "userspace",
+      "use": "static Linux binaries for bootstrapping",
+      "builder_use": "first-stage utilities with no libc dependency"
+    },
+    {
+      "id": "elftool",
+      "name": "elftool",
+      "repo": "elftool",
+      "url": "https://github.com/015stray91/elftool",
+      "branch": "master",
+      "kind": "userspace",
+      "use": "patch and inspect ELF binaries",
+      "builder_use": "checking the fused user space links against the libc we think"
+    },
+    {
+      "id": "bpftool",
+      "name": "bpftool",
+      "repo": "external-bpftool",
+      "url": "https://github.com/015stray91/external-bpftool",
+      "branch": "main",
+      "kind": "kernel",
+      "use": "install and inspect eBPF programs",
+      "builder_use": "verifying ZeroMount and SUSFS hooks once booted"
+    },
+    {
+      "id": "hexagon-sdk",
+      "name": "Hexagon SDK",
+      "repo": "hexagon-sdk",
+      "url": "https://github.com/015stray91/hexagon-sdk",
+      "branch": "main",
+      "kind": "userspace",
+      "use": "repackaged Qualcomm Hexagon SDK",
+      "builder_use": "DSP-side binaries on sm* SoCs"
+    },
+    {
+      "id": "edk2-msm",
+      "name": "edk2 for Qualcomm",
+      "repo": "edk2-msm",
+      "url": "https://github.com/015stray91/edk2-msm",
+      "branch": "master",
+      "kind": "firmware",
+      "use": "edk2 port for Qualcomm platforms",
+      "builder_use": "UEFI firmware work on the mobile side"
+    },
+    {
+      "id": "uefireader",
+      "name": "UEFIReader",
+      "repo": "UEFIReader",
+      "url": "https://github.com/015stray91/UEFIReader",
+      "branch": "main",
+      "kind": "firmware",
+      "use": "generate .inf payloads for UEFI projects",
+      "builder_use": "inspecting the Vivobook/Qualcomm UEFI payloads"
+    },
+    {
+      "id": "recovery-builder",
+      "name": "Action Recovery Builder",
+      "repo": "Action-Recovery-Builder",
+      "url": "https://github.com/015stray91/Action-Recovery-Builder",
+      "branch": "TWRP",
+      "kind": "image",
+      "use": "build a recovery image in Actions",
+      "builder_use": "recovery for a device whose build boot-loops"
+    },
+    {
+      "id": "bootable-recovery",
+      "name": "bootable_recovery",
+      "repo": "bootable_recovery",
+      "url": "https://github.com/015stray91/bootable_recovery",
+      "branch": "bq2",
+      "kind": "image",
+      "use": "recovery tree",
+      "builder_use": "reference tree for recovery-side extraction"
+    },
+    {
+      "id": "gearlock-darkmatter",
+      "name": "Gearlock DarkMatter packages",
+      "repo": "Darkmatter-kernel-packages",
+      "url": "https://github.com/015stray91/Darkmatter-kernel-packages",
+      "branch": "master",
+      "kind": "desktop",
+      "use": "Gearlock packages for the DarkMatter kernel",
+      "builder_use": "the desktop edition's existing package set"
+    },
+    {
+      "id": "darkmatter-glp",
+      "name": "DarkMatter .glp packages",
+      "repo": "Darkmatter-kernel",
+      "url": "https://github.com/015stray91/Darkmatter-kernel",
+      "branch": "master",
+      "kind": "desktop",
+      "use": ".glp kernel packages",
+      "builder_use": "swapping kernels in the desktop image without a rebuild"
+    },
+    {
+      "id": "nethunter-unified",
+      "name": "Kali NetHunter Unified",
+      "repo": "Kali-Nethunter-Unified",
+      "url": "https://github.com/015stray91/Kali-Nethunter-Unified",
+      "branch": "main",
+      "kind": "userspace",
+      "use": "unified APatch/KSU/Magisk NetHunter module",
+      "builder_use": "the mobile user space layer, flashable over the built kernel"
+    },
+    {
+      "id": "nethunter-pro-genevn",
+      "name": "NetHunter Pro for genevn",
+      "repo": "kali-nethunter-pro-genevn",
+      "url": "https://github.com/015stray91/kali-nethunter-pro-genevn",
+      "branch": "main",
+      "kind": "userspace",
+      "use": "NetHunter Pro tailored to the genevn device tree",
+      "builder_use": "mobile build's user space, already device-matched"
+    },
+    {
+      "id": "sudroidx",
+      "name": "suDROIDx",
+      "repo": "suDROIDx",
+      "url": "https://github.com/015stray91/suDROIDx",
+      "branch": "main",
+      "kind": "kernel",
+      "use": "automated boot image patching",
+      "builder_use": "patching a stock boot image without a full rebuild"
+    },
+    {
+      "id": "waydroid",
+      "name": "Waydroid",
+      "repo": "waydroid/waydroid",
+      "url": "https://github.com/waydroid/waydroid",
+      "branch": "main",
+      "kind": "runtime",
+      "use": "container-based Android on Linux",
+      "builder_use": "running the Android half on the desktop ISO for testing"
+    },
+    {
+      "id": "ubports-pdk",
+      "name": "UBports PDK",
+      "repo": "ubports/ubports-pdk",
+      "url": "https://github.com/ubports/ubports-pdk",
+      "branch": "main",
+      "kind": "userspace",
+      "use": "Ubuntu Touch platform development kit",
+      "builder_use": "the UBports/UT mobile user space build path"
+    },
+    {
+      "id": "ccache-action",
+      "name": "ccache action",
+      "repo": "hendrikmuhs/ccache-action",
+      "url": "https://github.com/hendrikmuhs/ccache-action",
+      "branch": "main",
+      "kind": "ci",
+      "use": "cache compiler output across runs",
+      "builder_use": "cuts kernel rebuilds from ~40 min to minutes"
+    },
+    {
+      "id": "install-llvm-action",
+      "name": "install LLVM action",
+      "repo": "KyleMayes/install-llvm-action",
+      "url": "https://github.com/KyleMayes/install-llvm-action",
+      "branch": "master",
+      "kind": "ci",
+      "use": "install a specific LLVM in Actions",
+      "builder_use": "the clean way to get a matching LLVM for a pass plugin"
+    },
+    {
+      "id": "setup-ndk-clang",
+      "name": "setup NDK clang",
+      "repo": "015stray91/setup-ndk-clang",
+      "url": "https://github.com/015stray91/setup-ndk-clang",
+      "branch": "main",
+      "kind": "ci",
+      "use": "prebuilt NDK clang for CI",
+      "builder_use": "user-space builds without downloading the full NDK",
+      "fork_of": "Ylarod/setup-ndk-clang",
+      "upstream": "https://github.com/Ylarod/setup-ndk-clang",
+      "note": "Forked. Pinned equipment for the mobile stages: installs a specific NDK clang so a kernel or vendor build does not depend on whatever the runner image happens to carry."
+    },
+    {
+      "id": "clang-tools-static",
+      "name": "clang-tools static binaries",
+      "repo": "clang-tools-static-binaries",
+      "url": "https://github.com/015stray91/clang-tools-static-binaries",
+      "branch": "master",
+      "kind": "ci",
+      "use": "static clang-format/tidy and friends",
+      "builder_use": "formatting and analysis with no LLVM install"
+    }
+  ],
+  "chains": {
+    "_note": "Named compiler chains, one pick per build. Each chain names the toolchain used for the kernel and for user space separately, because they are not the same requirement: kernel code must be built by a compiler the tree was tested against and must never go through an obfuscator; user space is far more forgiving. `obfuscator: true` means the builder refuses the chain when the target is a kernel.",
+    "stock-aarch64": {
+      "label": "Stock aarch64 kernel",
+      "kernel": "clang-12-ndk",
+      "userspace": "clang-12-ndk",
+      "note": "Safe default for the mobile kernel: Clang 12, no obfuscation."
+    },
+    "stock-x86_64": {
+      "label": "Stock x86_64",
+      "kernel": "external-llvm",
+      "userspace": "clang-r346389b",
+      "note": "Default for the desktop edition and kernel-zenith."
+    },
+    "stock-baseline-llvm": {
+      "label": "Stock LLVM baseline",
+      "kernel": "llvm-prebuilt",
+      "userspace": "llvm-prebuilt",
+      "note": "The untouched upstream LLVM build. Use it to prove a bug is not the toolchain's fault before blaming an obfuscator fork."
+    },
+    "llvm-wide-api": {
+      "label": "LLVM wide-API",
+      "kernel": "llvm-full",
+      "userspace": "llvm-full",
+      "note": "Unofficial LLVM with a broader exported API, for out-of-tree pass plugins that need internals a release build strips."
+    },
+    "aosp-gcc-arm": {
+      "label": "AOSP GCC (32-bit ARM)",
+      "kernel": "gcc-arm-eabi-4.8",
+      "userspace": "gcc-arm-eabi-4.8",
+      "note": "Pre-GKI 32-bit trees that modern clang cannot assemble."
+    },
+    "gnu-arm": {
+      "label": "GNU ARM toolchain",
+      "kernel": "toolchain-arm",
+      "userspace": "toolchain-arm",
+      "note": "Plain GNU cross toolchain, the non-AOSP route for arm and aarch64."
+    },
+    "kernel-tools-wrapper": {
+      "label": "AOSP+Clang12+SDCLang kernel toolkit",
+      "kernel": "android-kernel-tools",
+      "userspace": "clang-r346389b",
+      "note": "Uses the bundled kernel wrapper set; user space stays on plain AOSP clang."
+    },
+    "qualcomm-tuned": {
+      "label": "Qualcomm-tuned",
+      "kernel": "sdclang",
+      "userspace": "cpullvm-toolchain",
+      "note": "Qualcomm's own LLVM on both sides. Best code on sm* SoCs, but kernel patches must match its version."
+    },
+    "qualcomm-kernel-safe": {
+      "label": "Qualcomm user space, stock kernel",
+      "kernel": "clang-12-ndk",
+      "userspace": "sdclang",
+      "note": "Same benefit as qualcomm-tuned without betting the kernel on SDCLang."
+    },
+    "cpp-hosts": {
+      "label": "Portable C++ (host tools)",
+      "kernel": "clang-12-ndk",
+      "userspace": "cpp-toolchain",
+      "note": "For building host tools and user-space helpers rather than a device image."
+    },
+    "ollvm-plugin": {
+      "label": "OLLVM pass plugin",
+      "kernel": "clang-12-ndk",
+      "userspace": "obfuscator-llvm",
+      "obfuscator": true,
+      "note": "OLLVM as a loadable pass: the LLVM underneath must match the plugin's version."
+    },
+    "ollvm-optimised": {
+      "label": "OLLVM optimised",
+      "kernel": "clang-12-ndk",
+      "userspace": "obfuscator",
+      "obfuscator": true,
+      "note": "Same OLLVM passes with less compile-time cost."
+    },
+    "ollvm-22": {
+      "label": "OLLVM on LLVM 22",
+      "kernel": "clang-12-ndk",
+      "userspace": "ollvm",
+      "obfuscator": true,
+      "note": "Newest OLLVM; pairs with modern NDK user space."
+    },
+    "ollvm-x": {
+      "label": "OLLVM (xollvm)",
+      "kernel": "clang-12-ndk",
+      "userspace": "xollvm",
+      "obfuscator": true,
+      "note": "Second modern OLLVM-family fork; different pass defaults, useful as a cross-check."
+    },
+    "ollvm-ndk-docker": {
+      "label": "OLLVM via NDK",
+      "kernel": "clang-12-ndk",
+      "userspace": "docker-ollvm",
+      "obfuscator": true,
+      "note": "The packaged NDK route to the same passes."
+    },
+    "ndk-obfuscated": {
+      "label": "Obfuscated NDK toolchain",
+      "kernel": "clang-12-ndk",
+      "userspace": "goron",
+      "obfuscator": true,
+      "note": "Obfuscator baked into the NDK driver, so nothing extra to load."
+    },
+    "ndk23-obfuscated": {
+      "label": "Obfuscator NDK 23",
+      "kernel": "clang-12-ndk",
+      "userspace": "ObfuscatorNDK",
+      "obfuscator": true,
+      "note": "Prepackaged NDK 23 obfuscator."
+    },
+    "hikari-19": {
+      "label": "Hikari (LLVM 19-20)",
+      "kernel": "clang-12-ndk",
+      "userspace": "Hikari-LLVM19",
+      "obfuscator": true,
+      "note": "Hikari on modern LLVM: anti-debug and indirect-branch passes beyond plain OLLVM."
+    },
+    "hikari-12": {
+      "label": "Hikari (LLVM 12)",
+      "kernel": "clang-12-ndk",
+      "userspace": "HikariSummer",
+      "obfuscator": true,
+      "note": "The Hikari fork that matches the Clang-12 era NDKs."
+    },
+    "hikari-plugin": {
+      "label": "Hikari (out-of-tree plugin)",
+      "kernel": "clang-12-ndk",
+      "userspace": "Hikarust",
+      "obfuscator": true,
+      "note": "Loadable Hikari passes: no LLVM rebuild required."
+    },
+    "pluto": {
+      "label": "Pluto (LLVM 12.0.1)",
+      "kernel": "clang-12-ndk",
+      "userspace": "Pluto-Obfuscator",
+      "obfuscator": true,
+      "note": "Control-flow flattening plus bogus-flow passes."
+    },
+    "polaris": {
+      "label": "Polaris",
+      "kernel": "clang-12-ndk",
+      "userspace": "Polaris-Obfuscator",
+      "obfuscator": true,
+      "note": "Selectable intensity levels; heavier passes cost markedly more compile time."
+    },
+    "obscura": {
+      "label": "Obscura",
+      "kernel": "clang-12-ndk",
+      "userspace": "Obscura",
+      "obfuscator": true,
+      "note": "Intended successor to Hikari and O-MVLL. Newer, so less battle-tested."
+    },
+    "omvll": {
+      "label": "O-MVLL (pass-based)",
+      "kernel": "clang-12-ndk",
+      "userspace": "o-mvll",
+      "obfuscator": true,
+      "note": "Attaches to a stock clang build, so no LLVM fork is required."
+    },
+    "zyrox": {
+      "label": "Zyrox",
+      "kernel": "clang-12-ndk",
+      "userspace": "zyrox",
+      "obfuscator": true,
+      "note": "Small-scope compile-time plugin."
+    },
+    "kagura-chain": {
+      "label": "Kagura (anti-tamper)",
+      "kernel": "clang-12-ndk",
+      "userspace": "kagura",
+      "obfuscator": true,
+      "note": "CFG integrity and anti-tamper alongside obfuscation."
+    },
+    "hallucina-chain": {
+      "label": "Hallucina",
+      "kernel": "clang-12-ndk",
+      "userspace": "Hallucina",
+      "obfuscator": true,
+      "note": "Aimed at automated analysers rather than human readers."
+    },
+    "gimple": {
+      "label": "GIMPLE obfuscated user space",
+      "kernel": "gcc-arm-eabi-4.8",
+      "userspace": "gimple-obfuscator",
+      "obfuscator": true,
+      "note": "GCC route. Only the `sub` pass is safe; the 4.1.0 tree is incomplete."
+    },
+    "goat-gimple": {
+      "label": "GOAT + GIMPLE",
+      "kernel": "gcc-arm-eabi-4.8",
+      "userspace": "GOAT-Plugs",
+      "obfuscator": true,
+      "note": "Augmentation plugins on top of the GIMPLE pass. Same `sub`-only rule."
+    },
+    "khaos": {
+      "label": "Khaos (inter-procedural)",
+      "kernel": "clang-12-ndk",
+      "userspace": "Khaos",
+      "obfuscator": true,
+      "note": "Inter-procedural obfuscation; x86_64 user space only."
+    },
+    "movfuscator-chain": {
+      "label": "M/o/Vfuscator",
+      "kernel": "clang-12-ndk",
+      "userspace": "movfuscator",
+      "obfuscator": true,
+      "note": "Everything becomes MOV. A curiosity; x86 user space, not a shipping option."
+    },
+    "smudge-chain": {
+      "label": "smudgeC (source-level)",
+      "kernel": "clang-12-ndk",
+      "userspace": "smudgeC",
+      "obfuscator": true,
+      "note": "Rewrites C before any compiler runs, so the chain underneath is free."
+    },
+    "gas-chain": {
+      "label": "x86-64 asm obfuscation",
+      "kernel": "clang-12-ndk",
+      "userspace": "gas-obfuscation",
+      "obfuscator": true,
+      "note": "Assembly-level; demonstration scale."
+    },
+    "obfusk8-chain": {
+      "label": "Obfusk8 (header-only)",
+      "kernel": "clang-12-ndk",
+      "userspace": "Obfusk8",
+      "obfuscator": true,
+      "note": "Include-only C++17 obfuscation; nothing to install."
+    },
+    "obfush-chain": {
+      "label": "obfus.h (tcc macros)",
+      "kernel": "clang-r346389b",
+      "userspace": "obfus.h",
+      "obfuscator": true,
+      "note": "Compile-time macros with tcc on x86. Not an Android chain."
+    }
+  },
+  "categories": [
+    {
+      "id": "clang",
+      "label": "C / C++ (Clang)",
+      "language": "C/C++",
+      "kernelSafe": true,
+      "count": 4
+    },
+    {
+      "id": "gcc",
+      "label": "C / C++ (GCC)",
+      "language": "C/C++",
+      "kernelSafe": true,
+      "count": 4
+    },
+    {
+      "id": "llvm-vendor",
+      "label": "Qualcomm LLVM",
+      "language": "C/C++",
+      "kernelSafe": true,
+      "count": 2
+    },
+    {
+      "id": "llvm",
+      "label": "LLVM / toolchain base",
+      "language": "C/C++",
+      "kernelSafe": true,
+      "count": 2
+    },
+    {
+      "id": "cpp",
+      "label": "C / C++ (portable)",
+      "language": "C/C++",
+      "kernelSafe": true,
+      "count": 1
+    },
+    {
+      "id": "llvm-obf",
+      "label": "LLVM obfuscators",
+      "language": "C/C++ (obfuscated)",
+      "kernelSafe": false,
+      "count": 17
+    },
+    {
+      "id": "obf-source",
+      "label": "Source-level / header obfuscators",
+      "language": "C/C++",
+      "kernelSafe": false,
+      "count": 3
+    },
+    {
+      "id": "obf-other",
+      "label": "Other obfuscators",
+      "language": "C",
+      "kernelSafe": false,
+      "count": 3
+    }
+  ],
+  "stages": [
+    {
+      "id": "bootloader",
+      "label": "Bootloader / ESP",
+      "languages": [
+        "C",
+        "assembly",
+        "Rust"
+      ],
+      "romPart": "U-Boot, edk2, the UEFI ESP and its stub",
+      "kernelCode": true,
+      "allowedCategories": [
+        "clang",
+        "gcc",
+        "llvm"
+      ],
+      "why": "Boot code runs before any runtime exists. A miscompile is an unbootable machine, so this stage takes a plain compiler only."
+    },
+    {
+      "id": "host",
+      "label": "Host tools",
+      "languages": [
+        "C",
+        "C++",
+        "Python",
+        "Rust",
+        "Go"
+      ],
+      "romPart": "soong/mkbootimage, dtc, lpmake, build scripts",
+      "kernelCode": false,
+      "allowedCategories": [
+        "clang",
+        "gcc",
+        "llvm",
+        "cpp",
+        "llvm-vendor"
+      ],
+      "why": "Runs on the runner, not the device. Version freedom is highest here."
+    },
+    {
+      "id": "kernel",
+      "label": "Kernel image",
+      "languages": [
+        "C",
+        "assembly"
+      ],
+      "romPart": "the NUKI kernel, its modules, ZeroMount and SUSFS hooks",
+      "kernelCode": true,
+      "allowedCategories": [
+        "clang",
+        "gcc",
+        "llvm",
+        "llvm-vendor"
+      ],
+      "why": "Must match the compiler the tree was tested against. Obfuscation here does not fail to compile, it boot-loops."
+    },
+    {
+      "id": "system",
+      "label": "System / user space",
+      "languages": [
+        "C",
+        "C++",
+        "Java",
+        "Kotlin",
+        "Rust",
+        "Go"
+      ],
+      "romPart": "bionic, the framework, apps, the fused Linux user space",
+      "kernelCode": false,
+      "allowedCategories": [
+        "clang",
+        "gcc",
+        "llvm",
+        "llvm-vendor",
+        "cpp",
+        "llvm-obf",
+        "obf-source",
+        "obf-other"
+      ],
+      "why": "The only stage where obfuscation is safe: a fault kills one process, not the kernel."
+    },
+    {
+      "id": "recovery",
+      "label": "Recovery",
+      "languages": [
+        "C",
+        "C++"
+      ],
+      "romPart": "TWRP/orangefox recovery and its kernel",
+      "kernelCode": true,
+      "allowedCategories": [
+        "clang",
+        "gcc",
+        "llvm"
+      ],
+      "why": "Recovery bundles a kernel, so it inherits the kernel rule."
+    },
+    {
+      "id": "vendor",
+      "label": "Vendor / DSP",
+      "languages": [
+        "C",
+        "C++",
+        "Hexagon assembly"
+      ],
+      "romPart": "camera, audio, modem and Hexagon DSP blobs and HALs",
+      "kernelCode": false,
+      "allowedCategories": [
+        "clang",
+        "gcc",
+        "llvm",
+        "llvm-vendor"
+      ],
+      "why": "Vendor LLVM (SDCLang, cpullvm) is tuned for these cores and is the normal choice."
+    }
+  ]
+}
