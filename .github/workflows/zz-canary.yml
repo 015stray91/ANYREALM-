@@ -1,0 +1,9 @@
+name: canary
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo alive
