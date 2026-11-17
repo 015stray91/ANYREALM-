@@ -1630,6 +1630,19 @@
       "kind": "ci",
       "use": "static clang-format/tidy and friends",
       "builder_use": "formatting and analysis with no LLVM install"
+    },
+    {
+      "id": "kpatch",
+      "name": "KPatch-Live (kpatch livepatching, x86_64)",
+      "repo": "015stray91/kpatch_1",
+      "url": "https://github.com/015stray91/kpatch_1",
+      "branch": "master",
+      "kind": "tool",
+      "stage": "kernel",
+      "use": "build a livepatch that patches the running kernel without a reboot",
+      "builder_use": "x86_64 counterpart to KPatch-Next-Module. kpatch_1 supplies kpatch-build, which compiles a source diff into a livepatch .ko; the KPatch-Live module (kpatch-live/ in this repo) ships it and loads it at boot through CONFIG_LIVEPATCH.",
+      "notes": "KPatch-Next-Module is arm64-only (its customize.sh aborts otherwise, and its inline-hook code is arm64 assembly); upstream kpatch is x86-64 and s390 with no arm64 support. So these are counterparts, not a port of one to the other, and neither can run on the other's arch. kpatch also works from a source diff and replaces function bodies, where a .kpm hooks functions at runtime. The module refuses to load a patch whose recorded kernel does not match uname -r, because loading a mismatched livepatch rewrites live kernel text with wrong offsets. Applies to x86_64 only: nothing here covers AR-NUKI-genevn.",
+      "applyToKernel": false
     }
   ],
   "chains": {

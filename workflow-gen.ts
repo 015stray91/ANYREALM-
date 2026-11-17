@@ -434,6 +434,13 @@ export interface CatalogAddon {
    * without providing it, because the failure at boot is silent.
    */
   requires?: string;
+  /**
+   * False for a tool that is fetched to be *run*, not applied to the tree.
+   * kpatch is the case that matters: it is a build tool that emits a livepatch,
+   * so running it through the kernel-patch step would print "treating kpatch as
+   * a source drop" and quietly do nothing. Defaults to applied.
+   */
+  applyToKernel?: boolean;
 }
 
 let addonCache: Record<string, CatalogAddon> | null = null;
@@ -452,7 +459,17 @@ function addonCatalog(): Record<string, CatalogAddon> {
   try {
     const raw = readFileSync(new URL("./toolchains-catalog.json", import.meta.url), "utf8");
     const doc = JSON.parse(raw) as {
-      tools?: Array<{ id: string; repo: string; branch?: string; name?: string; kind?: string; stage?: string }>;
+      tools?: Array<{
+        id: string;
+        repo: string;
+        branch?: string;
+        name?: string;
+        kind?: string;
+        stage?: string;
+        /** Same boundary problem as `requires` below: a field not declared in
+         *  this cast never reaches the returned object. */
+        applyToKernel?: boolean;
+      }>;
     };
     for (const t of doc.tools ?? []) {
       // The catalog stores a repo name for the owner's own repos and
@@ -463,6 +480,7 @@ function addonCatalog(): Record<string, CatalogAddon> {
         name: t.name,
         kind: t.kind,
         stage: asStage(t.stage),
+        applyToKernel: t.applyToKernel,
       };
     }
   } catch {
@@ -485,6 +503,7 @@ function addonCatalog(): Record<string, CatalogAddon> {
          * `requires`, and the dependency check then allowed all six probe cases.
          */
         requires?: string;
+        applyToKernel?: boolean;
       }>;
     };
     for (const a of doc.addons ?? []) {
@@ -498,6 +517,7 @@ function addonCatalog(): Record<string, CatalogAddon> {
         kind: a.kind,
         stage: asStage(a.stage),
         requires: a.requires,
+        applyToKernel: a.applyToKernel,
       };
     }
   } catch {
@@ -689,7 +709,7 @@ function toolAddonSteps(spec: BuildSpec, catalog: Record<string, CatalogAddon>):
 function kernelAddonSteps(spec: BuildSpec, catalog: Record<string, CatalogAddon>): string[] {
   const kernelIds = addonsByStage(spec.tools ?? [], catalog)
     .filter((g) => g.stage === "kernel")
-    .flatMap((g) => g.addons.map((a) => a.id));
+    .flatMap((g) => g.addons.filter((a) => a.applyToKernel !== false).map((a) => a.id));
   if (kernelIds.length === 0) return [];
 
   const lines: string[] = [
