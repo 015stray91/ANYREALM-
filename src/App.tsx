@@ -36,6 +36,7 @@ import ModuleVectorSettingsPanel from './components/ModuleVectorSettingsPanel';
 import RootfsFuser from './components/RootfsFuser';
 import SourceSync from './components/SourceSync';
 import ComposeDispatch from './components/ComposeDispatch';
+import BuildChainPicker from './components/BuildChainPicker';
 import FirmwareUploader from './components/FirmwareUploader';
 import AospCodeStudio from './components/AospCodeStudio';
 import DeveloperConsole from './components/DeveloperConsole';
@@ -162,7 +163,7 @@ export default function App() {
     });
   };
 
-  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector' | 'experimental' | 'toolchains' | 'sources' | 'compose' | 'firmware_upload'>('architect');
+  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector' | 'experimental' | 'toolchains' | 'sources' | 'compose' | 'firmware_upload' | 'chain'>('architect');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [isRefactoringCode, setIsRefactoringCode] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
@@ -390,6 +391,19 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab('chain')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'chain'
+                  ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-build-chain"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Build Chain
+            </button>
+
+            <button
               onClick={() => setActiveTab('fuser')}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeTab === 'fuser' 
@@ -595,6 +609,9 @@ export default function App() {
           )}
           {activeTab === 'compose' && (
             <ComposeDispatch />
+          )}
+          {activeTab === 'chain' && (
+            <BuildChainPicker />
           )}
           {activeTab === 'firmware_upload' && (
             <FirmwareUploader />

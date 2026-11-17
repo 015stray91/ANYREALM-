@@ -251,12 +251,28 @@ export function uxSlots(
         blurb: (c.note ?? "").split(". ")[0] ?? "",
       }));
       const chosen = selection[d.id];
+      // The catalog is alphabetical by upstream name, which puts Sailfish first.
+      // Sailfish ships its own session inside its image and offers none of the
+      // catalog's shells, so defaulting to it lands the user on an empty next slot
+      // for no reason. Default to a distro that can actually reach a session.
+      const PREFERRED_DISTRO = "mobian";
+      const fallback =
+        options.find((o) => o.id === PREFERRED_DISTRO)?.id ??
+        options.find((o) => {
+          const e = UX_CATALOG.find((u) => u.id === o.id);
+          // A distro is usable as a default when some shell lists it.
+          return UX_CATALOG.some(
+            (u) => u.mechanism === "shell" && u.distros?.includes(o.id),
+          );
+        })?.id ??
+        options[0]?.id ??
+        null;
       return {
         id: d.id,
         label: d.label,
         meaning: d.meaning,
         required: d.required,
-        selected: options.some((o) => o.id === chosen) ? chosen! : (options[0]?.id ?? null),
+        selected: options.some((o) => o.id === chosen) ? chosen! : fallback,
         options,
       };
     }

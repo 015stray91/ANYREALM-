@@ -25,7 +25,7 @@ import {
 import { composeWorkflow, chainRefusal } from "./workflow-gen";
 import { checkOneUserspace, renderInvariantReport } from "./one-userspace";
 import { uxSlots, groupedUxChoices, planUxIntegration } from "./ux-integration";
-import { planChain } from "./build-chain";
+import { planChain, ROOT_MANAGERS } from "./build-chain";
 import {
   BACKENDS,
   backendSplit,
@@ -1505,7 +1505,7 @@ app.post("/api/chain/plan", (req, res) => {
     const { edition, selection, rootManager, firmware, board } = req.body ?? {};
     const slots = uxSlots(edition ?? "mobile_kernel", selection ?? {});
     const plan = planChain({ slots, rootManager, firmware, board });
-    res.json({ plan, slots });
+    res.json({ plan, slots, rootManagers: ROOT_MANAGERS });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
