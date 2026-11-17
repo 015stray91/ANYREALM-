@@ -173,6 +173,13 @@ export interface BuildSpec {
   };
   /** Mobile Linux user space layered on top, e.g. Kali NetHunter Pro. */
   overlay?: SpecSource;
+  /**
+   * Root manager the kernel is built with. Addons that hook Zygote (Sui) need a
+   * manager that provides Zygisk, and every manager this builder offers is
+   * KernelSU-family, so the check below refuses rather than shipping a module
+   * that can never load.
+   */
+  rootManager?: "kernelsu-next" | "resukisu" | "sukisu-ultra" | "wildksu";
   runner?: string;
   nodeVersion?: string;
   /** Upload artifact name, defaults to something derived from the spec. */
@@ -228,6 +235,34 @@ export function normalizeSpec(spec: BuildSpec): Required<Pick<BuildSpec, "name" 
       if (spec.androidBase.arch && !spec.androidBase.arch.includes("x86_64")) {
         throw new SpecError(
           `androidBase ${spec.androidBase.id} is ${spec.androidBase.arch.join("/")}, but the desktop ISO runs on x86_64`,
+        );
+      }
+    }
+  }
+
+  // Addon requirements. An addon that names a `requires` cannot be shipped
+  // without it: Sui is a Zygisk module, and every root manager this builder
+  // offers is KernelSU-family, so baking Sui in would produce an image with a
+  // module that can never load -- silently, since nothing at boot reports it.
+  if (spec.tools?.length) {
+    const catalog = addonCatalog();
+    const chosen = new Set(spec.tools);
+    for (const id of spec.tools) {
+      const addon = catalog[id];
+      if (!addon) continue;
+      const need = addon.requires;
+      if (!need) continue;
+      // "Zygisk (Magisk 24.0+)" -> "Zygisk" for the message, so the refusal names
+      // the thing the user has to change rather than the whole sentence.
+      const needName = need.split(/[ (]/)[0];
+      const available =
+        needName === "Shizuku" ? chosen.has("shizuku-next") : false;
+      if (!available) {
+        throw new SpecError(
+          `${addon.name} requires ${needName}, which this build does not provide. ` +
+            (needName === "Shizuku"
+              ? "Add Shizuku-Next to the composition first."
+              : `The root managers available here are KernelSU-family (${spec.rootManager ?? "kernelsu-next"}), and none of them provides ${needName}.`),
         );
       }
     }
@@ -393,6 +428,12 @@ export interface CatalogAddon {
   /** Which build stage this addon is applied in. Defaults to "system". */
   stage: AddonStage;
   kind?: string;
+  /**
+   * Another capability the addon cannot work without, e.g. "Shizuku" or
+   * "Zygisk". normalizeSpec() refuses a composition that names such an addon
+   * without providing it, because the failure at boot is silent.
+   */
+  requires?: string;
 }
 
 let addonCache: Record<string, CatalogAddon> | null = null;
@@ -431,7 +472,20 @@ function addonCatalog(): Record<string, CatalogAddon> {
   try {
     const raw = readFileSync(new URL("./sources-catalog.json", import.meta.url), "utf8");
     const doc = JSON.parse(raw) as {
-      addons?: Array<{ id: string; url?: string; branch?: string; name?: string; kind?: string; stage?: string }>;
+      addons?: Array<{
+        id: string;
+        url?: string;
+        branch?: string;
+        name?: string;
+        kind?: string;
+        stage?: string;
+        /**
+         * Declared here as well as on CatalogAddon, because this inline cast is
+         * the boundary the catalog crosses. Omitting it silently dropped every
+         * `requires`, and the dependency check then allowed all six probe cases.
+         */
+        requires?: string;
+      }>;
     };
     for (const a of doc.addons ?? []) {
       if (!a.url) continue;
@@ -443,6 +497,7 @@ function addonCatalog(): Record<string, CatalogAddon> {
         name: a.name,
         kind: a.kind,
         stage: asStage(a.stage),
+        requires: a.requires,
       };
     }
   } catch {

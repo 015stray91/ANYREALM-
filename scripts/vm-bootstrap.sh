@@ -59,6 +59,11 @@ PKGS=(
   pkg-config libglib2.0-dev libostree-dev
   # Cross toolchain: the mobile target is arm64 and this host is x86_64.
   gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+  # ISO assembly for the fusion (dark-hunter): simg2img converts the Android
+  # sparse system image, and isolinux/syslinux supply isolinux.bin plus
+  # isohdpfx.bin, the MBR template isohybrid-gpt-basdat needs to write a GPT
+  # that UEFI firmware will boot from a USB stick.
+  android-sdk-libsparse-utils isolinux syslinux-common
   # Kernel build prerequisites.
   build-essential bc bison flex libssl-dev libelf-dev libncurses-dev
   rsync unzip zip xz-utils lz4 zstd cpio

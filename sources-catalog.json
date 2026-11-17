@@ -839,6 +839,105 @@
       "stage": "kernel",
       "blurb": "MKSU variant with SUSFS.",
       "why": "Same overlap rule as gki-kernelsu-susfs: one root manager and one SUSFS series per tree."
+    },
+    {
+      "id": "shizuku-next",
+      "name": "Shizuku-Next",
+      "kind": "userspace_tool",
+      "url": "https://github.com/rushiranpise/Shizuku-Next",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64",
+        "armeabi-v7a",
+        "x86_64",
+        "x86"
+      ],
+      "stage": "system",
+      "blurb": "Shizuku fork with several start methods; ships a signed APK per release.",
+      "why": "An app the user launches, so it is staged into /system/priv-app like the other APKs, not linked into the kernel.",
+      "install": "fetch the release APK: https://github.com/rushiranpise/Shizuku-Next/releases -> shizuku-next.apk",
+      "release_tag": "v14.0.36-next",
+      "apk_asset": "shizuku-next.apk",
+      "notes": "Requires an adb-started or root-started server; both are start methods this fork provides. The APK needs no Zygisk."
+    },
+    {
+      "id": "sui",
+      "name": "Sui",
+      "kind": "userspace_tool",
+      "url": "https://github.com/RikkaApps/Sui",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64",
+        "armeabi-v7a",
+        "x86_64",
+        "x86"
+      ],
+      "stage": "system",
+      "blurb": "Magisk module giving a modern superuser interface; the APK is embedded in the module.",
+      "why": "The privileged payload is a module, not a kernel symbol, so it is staged at system time. It must not be compiled into the kernel: Sui hooks Zygote at runtime and needs Zygisk present.",
+      "install": "the zygisk zip from https://github.com/RikkaApps/Sui/releases carries lib/x86_64/{libmain,librish,libsui}.so plus sepolicy.rule",
+      "release_tag": "v13.5.1",
+      "zip_asset": "sui-zygisk-v13.5.1-release.zip",
+      "requires": "Zygisk",
+      "notes": "Requires Zygisk (Magisk 24.0+). Every root manager this builder offers is KernelSU-family and provides no Zygisk, so a composition naming sui is refused. Use shizuku-next instead for privileged-API apps on this kernel."
+    },
+    {
+      "id": "install-with-options",
+      "name": "InstallWithOptions",
+      "kind": "userspace_tool",
+      "url": "https://github.com/zacharee/InstallWithOptions",
+      "license": "Apache-2.0",
+      "arch": [
+        "arm64",
+        "armeabi-v7a",
+        "x86_64",
+        "x86"
+      ],
+      "stage": "system",
+      "blurb": "Installs APKs on-device with advanced options: downgrade, grant-all, install-as-user, and more.",
+      "why": "A Java/Kotlin app that drives the installer service through Shizuku, so it is staged into /system/priv-app and needs no kernel side at all.",
+      "install": "release APK: https://github.com/zacharee/InstallWithOptions/releases -> InstallWithOptions_0.9.2-release.apk",
+      "release_tag": "0.9.2",
+      "apk_asset": "InstallWithOptions_0.9.2-release.apk",
+      "requires": "Shizuku",
+      "notes": "Requires Shizuku running; it does not work standalone. Pair with the shizuku-next addon in the same composition."
+    },
+    {
+      "id": "mkm",
+      "name": "Minimal Kernel Manager (MKM)",
+      "kind": "userspace_tool",
+      "url": "https://github.com/zenithblue-oss/mkm",
+      "license": "GPL-3.0",
+      "arch": [
+        "arm64",
+        "armeabi-v7a",
+        "x86_64",
+        "x86"
+      ],
+      "stage": "system",
+      "blurb": "Floating real-time performance overlay plus kernel management: governor, frequency and parameter tuning, with custom layout and accents.",
+      "why": "Pure Kotlin over the Shizuku/root API surface, so it is staged into /system/priv-app like the other apps and touches no kernel code.",
+      "install": "release APK: https://github.com/zenithblue-oss/mkm/releases -> app-release.apk (v1.10, 6 MB, ships all four ABIs)",
+      "release_tag": "v1.10",
+      "apk_asset": "app-release.apk",
+      "notes": "Works with root OR Shizuku, so it is deliberately not marked as requiring a peer addon: every build here carries KernelSU-Next, which satisfies the root path. Pair it with shizuku-next only if you want the non-root path too. On F-Droid as com.ivarna.mkm; this repo is a mirror of abhay-byte/mkm."
+    },
+    {
+      "id": "droidvm",
+      "name": "DroidVM",
+      "kind": "userspace_tool",
+      "url": "https://github.com/Droid-VM/DroidVM",
+      "license": "GPL-3.0",
+      "arch": [
+        "arm64"
+      ],
+      "stage": "system",
+      "blurb": "Android virtual machine manager: runs a guest OS with crosvm or QEMU over Qualcomm Gunyah, MediaTek GenieZone or Linux KVM, with its own terminal console and external-display casting.",
+      "why": "Wanted as an app the user launches, not as a way to build AnyRealm. Staged into /system/priv-app like the other apps; the no-VM rule governs how the OS is composed, not which apps may be installed on it.",
+      "install": "release APK: https://github.com/Droid-VM/DroidVM/releases -> DroidVM-v0.0.6.apk (76 MB)",
+      "release_tag": "0.0.6",
+      "apk_asset": "DroidVM-v0.0.6.apk",
+      "notes": "arm64 only: it drives an ARM virtualization node, so there is no x86_64 build to stage on the desktop ISO. It also needs a hypervisor node at runtime -- /dev/gunyah, /dev/gzvm or /dev/kvm. Genevn (sm6450) provides Gunyah, so the root path exists there; the desktop kernel has '# CONFIG_KVM is not set', so on dark-hunter the app installs and launches but cannot start a guest until KVM host support is enabled in kernel-zenith. Recorded as an app, not as a build backend."
     }
   ],
   "ux_integrations": [
