@@ -59,7 +59,10 @@ jobs:
 
       - name: Check the bundled server answers
         run: |
-          NODE_ENV=production PORT=3399 ANYREALM_DATA_DIR="$PWD" node dist/server.cjs &
+          # bun, not node: GitHub's runners ship Node but this VM has Bun only, and
+          # Bun runs the same CJS bundle. The packaged app uses Electron's own
+          # binary at runtime, so this probe is the closest CI equivalent.
+          NODE_ENV=production PORT=3399 ANYREALM_DATA_DIR="$PWD" bun dist/server.cjs &
           SERVER=$!
           for i in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:3399/api/fetch/watches > /tmp/watches.json 2>/dev/null; then break; fi
