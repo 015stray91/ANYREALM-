@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The mark: two rings that are one ring, with a seam that does not close.
+
+  It reads as the project's claim rather than as a logo -- a kernel half and a
+  rootfs half drawn as a single stroke, so there is no gap between them to point
+  at. The seam is a small break because the shape is two arcs, not one circle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#7DD3FC"
+        android:pathData="M54,26a28,28 0 1,1 -0.01,0zM54,34a20,20 0 1,0 0.01,0z" />
+    <path
+        android:fillColor="#A7F3D0"
+        android:pathData="M54,54m-6,0a6,6 0 1,1 12,0a6,6 0 1,1 -12,0" />
+    <path
+        android:fillColor="#0B1120"
+        android:pathData="M50,20h8v14h-8z" />
+</vector>

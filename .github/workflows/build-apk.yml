@@ -1,0 +1,109 @@
+name: Build APK
+
+# The APK is a local front end to this repo's pipeline, so it needs nothing but the
+# Android SDK. Building it in Actions rather than on the user's machine means the
+# signing keystore never has to sit in the repo: it comes from repository secrets.
+#
+# A fork that has no secrets still gets a debug-signed APK, which side-loads fine.
+# Failing the job for a missing keystore would make the first fork build impossible.
+
+on:
+  workflow_dispatch:
+    inputs:
+      signing:
+        description: "Sign with the release keystore when secrets are present"
+        type: boolean
+        default: true
+  push:
+    branches: [main, 015stray91]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "gradle.properties"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - "gradlew"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: assembleRelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # 9.3.1 is the wrapper's own version; setup-gradle reads it from the
+          # properties file, so the cache key follows an upgrade automatically.
+          cache-read-only: false
+
+      - name: Decode the release keystore, when one is configured
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANYREALM_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No ANYREALM_KEYSTORE_BASE64 secret: building a debug-signed APK."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing/release.jks"
+          echo "present=true" >> "$GITHUB_OUTPUT"
+          echo "keystore decoded ($(stat -c%s "$RUNNER_TEMP/signing/release.jks") bytes)"
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-unit-tests
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Assemble release
+        env:
+          ANYREALM_RELEASE_STORE_FILE: ${{ steps.keystore.outputs.present == 'true' && format('{0}/signing/release.jks', runner.temp) || '' }}
+          ANYREALM_RELEASE_STORE_PASSWORD: ${{ secrets.ANYREALM_KEYSTORE_PASSWORD }}
+          ANYREALM_RELEASE_KEY_ALIAS: ${{ secrets.ANYREALM_KEY_ALIAS }}
+          ANYREALM_RELEASE_KEY_PASSWORD: ${{ secrets.ANYREALM_KEY_PASSWORD }}
+          ANYREALM_REPO_OWNER: ${{ github.repository_owner }}
+          ANYREALM_REPO_NAME: ${{ github.event.repository.name }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Note which signature the APK carries
+        run: |
+          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "APK: $APK ($(du -h "$APK" | cut -f1))"
+          # apksigner ships with the Android SDK on the runner, so this is a real
+          # check rather than a claim: a debug key means the release secrets are absent.
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" | head -12 || true
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anyrealm-builder-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

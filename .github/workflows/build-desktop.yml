@@ -1,0 +1,85 @@
+name: Build desktop app
+
+# The desktop app is the same server the browser runs, wrapped in Electron. The
+# build is two steps and neither is exotic: Vite for the UI, esbuild for the server,
+# then electron-builder packs the result.
+#
+# The output is an AppImage and a .deb. An AppImage is one file a user can run
+# without installing anything, which matches the project's "no nanny" stance: it
+# does not need root, and it does not touch the host's package database.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 015stray91]
+    paths:
+      - "src/**"
+      - "desktop/**"
+      - "*.ts"
+      - "*.json"
+      - "package.json"
+      - "vite.config.ts"
+      - "index.html"
+      - ".github/workflows/build-desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: AppImage and deb
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build UI and server
+        run: npm run build
+
+      - name: Check the bundled server answers
+        run: |
+          NODE_ENV=production PORT=3399 ANYREALM_DATA_DIR="$PWD" node dist/server.cjs &
+          SERVER=$!
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3399/api/fetch/watches > /tmp/watches.json 2>/dev/null; then break; fi
+            sleep 0.5
+          done
+          cat /tmp/watches.json
+          kill $SERVER || true
+          # A server that starts but serves nothing is the failure this catches: it
+          # would otherwise only show up as a blank window in the packaged app.
+          grep -q '"intervalMs"' /tmp/watches.json
+
+      - name: Package
+        env:
+          # electron-builder downloads its own Electron and appimagetool; no signing
+          # is configured, so it produces an unsigned AppImage, which is expected.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --linux AppImage deb --publish never
+
+      - name: List what was produced
+        run: ls -lh release/ || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anyrealm-builder-desktop
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+          retention-days: 30
