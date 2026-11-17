@@ -1,0 +1,8 @@
+name: j3
+on: workflow_dispatch
+jobs:
+  apk:
+    name: assembleRelease
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo j3

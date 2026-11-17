@@ -1,0 +1,8 @@
+name: j2
+on: workflow_dispatch
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - run: echo j2
