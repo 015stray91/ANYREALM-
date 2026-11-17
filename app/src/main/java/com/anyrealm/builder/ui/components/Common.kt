@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.anyrealm.builder.data.RunPhase
+import com.anyrealm.builder.data.describe
 
 /** A labelled value in a monospace face, for the technical half of the UI. */
 @Composable

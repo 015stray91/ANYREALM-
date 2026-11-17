@@ -303,7 +303,10 @@ class AnyRealmViewModel(app: Application) : AndroidViewModel(app) {
         if (art == null) return fail("no artefact to fetch yet")
         if (s.phase != RunPhase.Succeeded) return fail("only a successful run has an artefact")
 
-        val dest = File(getApplication<Application>().getExternalFilesDir(null) ?: filesDir, "artifacts")
+        // getApplication() is itself the Context, so its filesDir is used directly;
+        // reading `filesDir` off the ViewModel does not resolve.
+        val app = getApplication<Application>()
+        val dest = File(app.getExternalFilesDir(null) ?: app.filesDir, "artifacts")
         _state.update { it.copy(downloading = true, error = null, downloadedBytes = 0, savedTo = null) }
         viewModelScope.launch {
             try {

@@ -20,3 +20,6 @@ keystore.properties
 # workspace should carry. CI builds it; it is never committed.
 release/
 linux-unpacked/
+
+# Kotlin incremental-compile state from a local Gradle run. Rebuildable.
+.kotlin/

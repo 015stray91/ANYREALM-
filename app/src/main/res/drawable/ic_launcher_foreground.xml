@@ -1,23 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The mark: two rings that are one ring, with a seam that does not close.
+  The mark: two concentric rings around a core, with a break at the top of the
+  outer ring. It reads as the project's claim rather than as a logo: a kernel half
+  and a rootfs half drawn as one stroke, so there is no gap between them to point
+  at. The break is there because the shape is two arcs, not one closed circle.
 
-  It reads as the project's claim rather than as a logo -- a kernel half and a
-  rootfs half drawn as a single stroke, so there is no gap between them to point
-  at. The seam is a small break because the shape is two arcs, not one circle.
+  Paths are plain arcs at integer coordinates. An earlier version used a
+  relative-arc shorthand that aapt2 rejected, and a comment containing a double
+  hyphen, which is not legal inside an XML comment at all. Both are why this file
+  is now kept to the simplest possible form.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Outer ring: 54,54 with radius 26, drawn as two half arcs so the
+         top-centre gap reads as the seam. -->
     <path
         android:fillColor="#7DD3FC"
-        android:pathData="M54,26a28,28 0 1,1 -0.01,0zM54,34a20,20 0 1,0 0.01,0z" />
+        android:pathData="M54,28 A26,26 0 0,1 80,54 A26,26 0 0,1 54,80 A26,26 0 0,1 28,54 A26,26 0 0,1 45,29.2 L46,36.0 A19,19 0 0,0 35,54 A19,19 0 0,0 54,73 A19,19 0 0,0 73,54 A19,19 0 0,0 54,35 A19,19 0 0,0 52,35.05 L52.6,28.02 A26,26 0 0,1 54,28 Z" />
+
+    <!-- Core: the fused user space. -->
     <path
         android:fillColor="#A7F3D0"
-        android:pathData="M54,54m-6,0a6,6 0 1,1 12,0a6,6 0 1,1 -12,0" />
-    <path
-        android:fillColor="#0B1120"
-        android:pathData="M50,20h8v14h-8z" />
+        android:pathData="M54,48 A6,6 0 1,1 54,60 A6,6 0 1,1 54,48 Z" />
 </vector>
