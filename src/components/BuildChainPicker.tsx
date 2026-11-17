@@ -94,11 +94,8 @@ export default function BuildChainPicker() {
     setSlots(d.slots);
     // Seed the selection from whatever the server considers current, so the plan
     // request always names every slot explicitly rather than relying on defaults.
-    setSelection((prev) => {
-      const next = { ...prev };
-      for (const s of d.slots) if (s.selected && !next[s.id]) next[s.id] = s.selected;
-      return next;
-    });
+    // Deliberately NOT seeded from s.selected: the chain is walked step by step,
+    // so nothing is chosen until the user chooses it.
   }, [edition, selection]);
 
   useEffect(() => {
@@ -184,16 +181,33 @@ export default function BuildChainPicker() {
       {/* the five steps */}
       <div className="grid gap-2">
         {slots.map((s, i) => {
-          const selected = selection[s.id] ?? s.selected ?? '';
+          const selected = selection[s.id] ?? '';
+          // A step is locked until the step it depends on has been answered. The
+          // dependency is real: the distro decides which UX options exist at all.
+          const needsDistro = ['display_owner', 'shell', 'theme', 'packages'].includes(s.id);
+          const locked = needsDistro && !selection.distro;
           const opt = s.options.find((o) => o.id === selected);
           const empty = s.options.length === 0;
+          if (locked) {
+            return (
+              <div key={s.id} className="rounded border border-slate-800/50 bg-slate-900/20 p-2.5 opacity-50">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-slate-700 w-4">{i + 1}</span>
+                  <span className="text-[11px] font-semibold text-slate-500">{s.label}</span>
+                  <span className="text-[10px] text-slate-600 ml-auto">choose a distro first</span>
+                </div>
+              </div>
+            );
+          }
           return (
             <div
               key={s.id}
               className={`rounded border p-2.5 ${
                 empty
                   ? 'border-amber-900/60 bg-amber-950/20'
-                  : 'border-slate-800 bg-slate-900/40'
+                  : selected
+                    ? 'border-slate-800 bg-slate-900/40'
+                    : 'border-slate-700 bg-slate-900/40'
               }`}
             >
               <div className="flex items-center gap-2">
@@ -214,8 +228,15 @@ export default function BuildChainPicker() {
                 <select
                   value={selected}
                   onChange={(e) => pick(s.id, e.target.value)}
-                  className="mt-1.5 ml-6 w-[calc(100%-1.5rem)] bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 outline-none"
+                  className={`mt-1.5 ml-6 w-[calc(100%-1.5rem)] bg-slate-950 border rounded px-2 py-1.5 text-xs outline-none ${
+                    selected
+                      ? 'border-slate-800 text-slate-200'
+                      : 'border-slate-700 text-slate-500'
+                  }`}
                 >
+                  <option value="" disabled>
+                    — choose {s.label} —
+                  </option>
                   {s.options.map((o) => (
                     <option key={o.id} value={o.id} disabled={!!o.blocked}>
                       {o.name}
@@ -319,12 +340,21 @@ export default function BuildChainPicker() {
       <div className="flex items-center gap-2">
         <button
           onClick={planNow}
-          disabled={loading}
+          disabled={loading || !selection.base_rom || !selection.distro || !selection.display_owner}
           className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-xs font-semibold text-white cursor-pointer flex items-center gap-1.5"
         >
           <Layers className="w-3.5 h-3.5" />
           {loading ? 'resolving…' : 'resolve chain'}
         </button>
+        {(!selection.base_rom || !selection.distro || !selection.display_owner) && (
+          <span className="text-[10px] text-slate-500">
+            {!selection.base_rom
+              ? 'step 1: choose the Android base'
+              : !selection.distro
+                ? 'step 2: choose the Linux distro'
+                : 'step 3: choose the display server'}
+          </span>
+        )}
         {err && <span className="text-[11px] text-rose-400">{err}</span>}
       </div>
 

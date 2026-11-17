@@ -336,13 +336,23 @@ export function chainRefusal(spec: BuildSpec): string | null {
   // is compiled there.
   for (const role of KERNEL_ROLES) {
     if (!compiled.has(role)) continue;
+    const direct = (chain as any)[role] as ChainSlot | undefined;
     const slot = chainSlotFor(chain, role);
     if (!slot?.obfuscator) continue;
+    // The slot may have been inherited from `userspace` rather than chosen for
+    // this role. That is the case worth spelling out: the user did nothing wrong
+    // on the kernel stage, they simply set an obfuscator as the user-space
+    // compiler and the fallback carried it into the kernel.
+    const inherited = !direct && slot === chain.userspace;
     return (
       `the "${slot.label ?? slot.id}" compiler is an obfuscator and this build uses it for the ${role} stage, ` +
       `which compiles kernel or boot code. Obfuscation passes there do not fail to compile -- they produce an ` +
-      `image that boots partway and faults, which reads as a device bug. Use a plain compiler for ${role}; ` +
-      `obfuscation is fine for the system/user-space stage.`
+      `image that boots partway and faults, which reads as a device bug. ` +
+      (inherited
+        ? `It reached the ${role} stage through the user-space fallback: no ${role} compiler was chosen, so the ` +
+          `user-space one was used for it. Pick a plain compiler for ${role} and keep the obfuscator for ` +
+          `user space only.`
+        : `Use a plain compiler for ${role}; obfuscation is fine for the system/user-space stage.`)
     );
   }
   if (!chain.kernel) return null;
@@ -356,30 +366,116 @@ export function chainRefusal(spec: BuildSpec): string | null {
  * generated from the user's real repositories, and a stale copy in the source
  * would send a workflow after a repo that has since been renamed.
  */
-let addonCache: Record<string, { repo: string; branch?: string; name?: string }> | null = null;
-function addonCatalog(): Record<string, { repo: string; branch?: string; name?: string }> {
+/**
+ * The stages an addon can belong to, in the order a build reaches them.
+ *
+ * The order is the point: a kernel-stage addon cannot be applied before the kernel
+ * is checked out, and a system-stage tool is useless if it is layered in after the
+ * rootfs has already been packed. Naming the stage in the catalog is what lets the
+ * generator put each one where it belongs instead of dumping them all in a prelude.
+ */
+export const ADDON_STAGES = [
+  "bootloader",
+  "host",
+  "kernel",
+  "system",
+  "recovery",
+  "vendor",
+  "extra",
+] as const;
+
+export type AddonStage = (typeof ADDON_STAGES)[number];
+
+export interface CatalogAddon {
+  repo: string;
+  branch?: string;
+  name?: string;
+  /** Which build stage this addon is applied in. Defaults to "system". */
+  stage: AddonStage;
+  kind?: string;
+}
+
+let addonCache: Record<string, CatalogAddon> | null = null;
+
+/**
+ * The addon catalog, from both catalog files.
+ *
+ * `toolchains-catalog.json` holds the tool repos (image kitchens, partition tools)
+ * and has no stage, so those default to `system`: they are user-space programs that
+ * run alongside a build rather than inside it. `sources-catalog.json` holds the
+ * kernel modules and patch sets and does name a stage, which is what places them.
+ */
+function addonCatalog(): Record<string, CatalogAddon> {
   if (addonCache) return addonCache;
+  const out: Record<string, CatalogAddon> = {};
   try {
-    // Read synchronously: generation is already a synchronous request handler
-    // and the file is small.
     const raw = readFileSync(new URL("./toolchains-catalog.json", import.meta.url), "utf8");
-    const doc = JSON.parse(raw) as { tools?: Array<{ id: string; repo: string; branch?: string; name?: string }> };
-    addonCache = {};
+    const doc = JSON.parse(raw) as {
+      tools?: Array<{ id: string; repo: string; branch?: string; name?: string; kind?: string; stage?: string }>;
+    };
     for (const t of doc.tools ?? []) {
       // The catalog stores a repo name for the owner's own repos and
       // "owner/name" for third-party ones; both become "owner/name" here.
-      addonCache[t.id] = {
+      out[t.id] = {
         repo: t.repo.includes("/") ? t.repo : `015stray91/${t.repo}`,
         branch: t.branch,
         name: t.name,
+        kind: t.kind,
+        stage: asStage(t.stage),
       };
     }
   } catch {
     // A missing catalog must not break generation -- it only means the user
     // cannot ask for addons until the file is restored.
-    addonCache = {};
   }
-  return addonCache;
+  try {
+    const raw = readFileSync(new URL("./sources-catalog.json", import.meta.url), "utf8");
+    const doc = JSON.parse(raw) as {
+      addons?: Array<{ id: string; url?: string; branch?: string; name?: string; kind?: string; stage?: string }>;
+    };
+    for (const a of doc.addons ?? []) {
+      if (!a.url) continue;
+      const slug = a.url.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
+      if (!slug.includes("/")) continue;
+      out[a.id] = {
+        repo: slug,
+        branch: a.branch,
+        name: a.name,
+        kind: a.kind,
+        stage: asStage(a.stage),
+      };
+    }
+  } catch {
+    /* same reasoning as above */
+  }
+  addonCache = out;
+  return out;
+}
+
+/** Coerce a catalog's stage string, defaulting rather than throwing. */
+function asStage(value: string | undefined): AddonStage {
+  return (ADDON_STAGES as readonly string[]).includes(value ?? "")
+    ? (value as AddonStage)
+    : "system";
+}
+
+/** Which addons belong to which stage, in build order. */
+export function addonsByStage(
+  ids: string[],
+  catalog: Record<string, CatalogAddon> = addonCatalog(),
+): Array<{ stage: AddonStage; addons: Array<{ id: string } & CatalogAddon> }> {
+  const groups = new Map<AddonStage, Array<{ id: string } & CatalogAddon>>();
+  for (const id of ids) {
+    const a = catalog[id];
+    if (!a) continue;
+    const list = groups.get(a.stage) ?? [];
+    list.push({ id, ...a });
+    groups.set(a.stage, list);
+  }
+  return ADDON_STAGES.filter((s) => groups.has(s)).map((stage) => ({
+    stage,
+    addons: groups.get(stage)!,
+  }));
 }
 
 /** YAML lines that fetch a toolchain repo. */
@@ -474,39 +570,100 @@ function chainSteps(spec: BuildSpec): string[] {
  * firmware extractors, AnyKernel wrappers. Fetching them means a workflow uses
  * the same tools the user built rather than whatever apt happens to ship.
  */
-function toolAddonSteps(spec: BuildSpec, catalog: Record<string, { repo: string; branch?: string; name?: string }>): string[] {
-  const ids = spec.tools ?? [];
-  if (ids.length === 0) return [];
+function toolAddonSteps(spec: BuildSpec, catalog: Record<string, CatalogAddon>): string[] {
+  const grouped = addonsByStage(spec.tools ?? [], catalog);
+  if (grouped.length === 0) return [];
   const out: string[] = [];
-  for (const id of ids) {
-    const t = catalog[id];
-    if (!t) continue;
-    out.push(
-      `      - name: Fetch addon ${t.name ?? id}`,
-      "        uses: actions/checkout@v4",
-      "        with:",
-      `          repository: ${t.repo}`,
-      ...(t.branch ? [`          ref: ${t.branch}`] : []),
-      `          path: addons/${id}`,
-      "          fetch-depth: 1",
+
+  // Fetches first, in stage order, so a log reads in the order the build uses them.
+  // Kernel-stage addons are fetched here but applied by the kernel body, because
+  // applying a patch before the tree exists would fail.
+  for (const group of grouped) {
+    for (const t of group.addons) {
+      out.push(
+        `      - name: Fetch ${group.stage} addon ${t.name ?? t.id}`,
+        "        uses: actions/checkout@v4",
+        "        with:",
+        `          repository: ${t.repo}`,
+        ...(t.branch ? [`          ref: ${t.branch}`] : []),
+        `          path: addons/${t.id}`,
+        "          fetch-depth: 1",
+      );
+    }
+  }
+
+  // One PATH export per stage, so a build step can ask for exactly the tools its
+  // own stage should see. A system tool leaking into the kernel stage is how a
+  // host gcc ends up compiling a kernel module.
+  const lines: string[] = ["set -euo pipefail", "shopt -s nullglob"];
+  for (const group of grouped) {
+    const varName = `ADDON_${group.stage.toUpperCase()}_PATHS`;
+    lines.push(`: > /tmp/addon-${group.stage}.txt`);
+    for (const t of group.addons) {
+      lines.push(
+        `chmod -R +x "addons/${t.id}" 2>/dev/null || true`,
+        `echo "$PWD/addons/${t.id}" >> /tmp/addon-${group.stage}.txt`,
+      );
+    }
+    lines.push(
+      `echo "${varName}=$(paste -sd: /tmp/addon-${group.stage}.txt)" >> "$GITHUB_ENV"`,
     );
   }
-  out.push(
-    ...shellStep("Make the addon tools available", [
-      "set -euo pipefail",
-      "shopt -s nullglob",
-      "for d in addons/*/; do",
-      '  name=$(basename "$d")',
-      '  chmod -R +x "$d" 2>/dev/null || true',
-      '  echo "$PWD/$d" >> /tmp/addon-paths.txt',
-      '  echo "addon ready: $name"',
-      "done",
-      'if [ -s /tmp/addon-paths.txt ]; then',
-      '  echo "ADDON_PATHS=$(paste -sd: /tmp/addon-paths.txt)" >> "$GITHUB_ENV"',
-      "fi",
-    ]),
+  // The union is what most steps want; it is still one variable, not one per tool.
+  lines.push(
+    "cat /tmp/addon-*.txt > /tmp/addon-all.txt",
+    'if [ -s /tmp/addon-all.txt ]; then',
+    '  echo "ADDON_PATHS=$(paste -sd: /tmp/addon-all.txt)" >> "$GITHUB_ENV"',
+    "fi",
+    'echo "addons: $(wc -l < /tmp/addon-all.txt) path(s)"',
   );
+  out.push(...shellStep("Make the addon tools available", lines));
   return out;
+}
+
+/**
+ * Apply the kernel-stage addons to a checked-out kernel tree.
+ *
+ * A module or patch set is applied by whatever the repo provides, in this order:
+ * `apply.sh`, then a `*.patch` series sorted by name, then nothing. Running an
+ * addon's own script is preferred over guessing, because several of these repos
+ * apply patches with `patch -p1` and others with `git am`, and only the repo knows
+ * which. A repo with neither is a source drop that is copied in and built by the
+ * kernel's own Makefile.
+ */
+function kernelAddonSteps(spec: BuildSpec, catalog: Record<string, CatalogAddon>): string[] {
+  const kernelIds = addonsByStage(spec.tools ?? [], catalog)
+    .filter((g) => g.stage === "kernel")
+    .flatMap((g) => g.addons.map((a) => a.id));
+  if (kernelIds.length === 0) return [];
+
+  const lines: string[] = [
+    "set -euo pipefail",
+    // Applied in the order they were selected, which is the order the user sees.
+    `for id in ${kernelIds.join(" ")}; do`,
+    '  src="../addons/$id"',
+    '  [ -d "$src" ] || { echo "::warning::addon $id was not fetched"; continue; }',
+    '  echo "applying kernel addon: $id"',
+    '  if [ -x "$src/apply.sh" ]; then',
+    '    ( cd . && bash "$src/apply.sh" )',
+    '  elif [ -f "$src/apply.sh" ]; then',
+    '    ( cd . && bash "$src/apply.sh" )',
+    '  else',
+    '    shopt -s nullglob',
+    '    patches=("$src"/*.patch)',
+    "    shopt -u nullglob",
+    '    if [ ${#patches[@]} -gt 0 ]; then',
+    "      printf '%s\\n' \"${patches[@]}\" | sort | while read -r p; do",
+    '        echo "  patch $(basename "$p")"',
+    '        patch -p1 --forward --batch < "$p"',
+    "      done",
+    "    else",
+    '      echo "  no apply.sh and no patches: treating $id as a source drop"',
+    "    fi",
+    "  fi",
+    "done",
+  ];
+  return shellStep("Apply kernel-stage addons", lines);
 }
 
 function bodyForFirmwareAndroid(spec: BuildSpec, n: { androidMode: string }): string[] {
@@ -933,6 +1090,11 @@ function bodyForMobileKernel(spec: BuildSpec): string[] {
       "  gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu device-tree-compiler",
     ]),
   );
+
+  // Kernel-stage addons land here rather than in the prelude: the tree has just
+  // been checked out and nothing has compiled yet, which is the only point where a
+  // patch series or a module source drop can be applied cleanly.
+  out.push(...kernelAddonSteps(spec, addonCatalog()));
 
   out.push(
     ...shellStep("Configure and build the kernel", [

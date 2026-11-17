@@ -1,8 +1,17 @@
+# Dependencies and build output are not part of the saved project.
 node_modules/
-build/
 dist/
-coverage/
-.DS_Store
-*.log
-.env*
-!.env.example
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.iso
+*.img
+release/
+test-results/
+
+# Signing material must never be committed. The CI job takes it from secrets.
+*.jks
+*.keystore
+keystore.properties

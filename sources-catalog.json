@@ -619,6 +619,226 @@
         "qt-window-manager"
       ],
       "theme_host": true
+    },
+    {
+      "id": "abk-cve-fix",
+      "name": "ABK CVE Fix",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/ABK_CVE_Fix_Module",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "Patches known CVEs in the kernel source before it compiles.",
+      "why": "A source-level fix set, so it applies at the kernel stage and must come before the build, not after it."
+    },
+    {
+      "id": "abk-externel",
+      "name": "ABK External Module",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/ABK_Externel_Module",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "Out-of-tree module scaffold used by the other ABK module repos.",
+      "why": "Needs the built kernel's Module.symvers; a module cannot be linked before the kernel exists."
+    },
+    {
+      "id": "abk-f2fs-fix",
+      "name": "ABK F2FS Fix",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/ABK_F2FS_FIX_MODULE",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "Fixes F2FS behaviour on vendor kernels where the driver is old.",
+      "why": "Relevant to NURFS because the fused root may sit on F2FS; it is a kernel driver change."
+    },
+    {
+      "id": "abk-sched-power",
+      "name": "ABK Scheduler / Power",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/ABK_SCHED_POWER_MODULE",
+      "branch": "master",
+      "stage": "kernel",
+      "blurb": "Scheduler and power tweaks aimed at phone thermals and battery.",
+      "why": "Core scheduler changes, so kernel stage only. Not safe to take as a userspace module."
+    },
+    {
+      "id": "abk-control",
+      "name": "ABK Control Module",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/ABK_control_module",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "Runtime control surface for the ABK module family.",
+      "why": "Loads against the running kernel's symbols, so it must be built with the same kernel it will run on."
+    },
+    {
+      "id": "abk-hook-high-level",
+      "name": "ABK High-Level Hook",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/ABK_high_level_hook_module",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "Higher-level hook helpers layered on KernelSU.",
+      "why": "Depends on KSU being present, which is why the root manager is chosen before this."
+    },
+    {
+      "id": "brutal-busybox",
+      "name": "Brutal Busybox",
+      "kind": "userspace_tool",
+      "url": "https://github.com/015stray91/Brutal_busybox",
+      "branch": "master",
+      "stage": "system",
+      "blurb": "Statically linked busybox with a wide applet set.",
+      "why": "A userspace binary, so it belongs in the system stage and has no kernel constraint."
+    },
+    {
+      "id": "droidspaces",
+      "name": "DroidSpaces OSS",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/DroidSpaces-OSS-module",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "Namespace and mount-isolation helper for Android.",
+      "why": "Reads carefully: this is the kind of piece AnyRealm replaces with real fusion. Included so it is visible and refusable rather than absent, and it is flagged in the catalog as not used by a NUKI build."
+    },
+    {
+      "id": "kpatch-next-module",
+      "name": "KPatch-Next Module",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/KPatch-Next-Module",
+      "branch": "kpm_ctl0",
+      "stage": "kernel",
+      "blurb": "Live kernel patching control module (branch kpm_ctl0).",
+      "why": "The branch is not main: pinning it here records that, so a workflow does not silently take main."
+    },
+    {
+      "id": "kali-nethunter-busybox",
+      "name": "Kali NetHunter Busybox",
+      "kind": "userspace_tool",
+      "url": "https://github.com/015stray91/Kali-Nethunter-Busybox",
+      "branch": "master",
+      "stage": "system",
+      "blurb": "NetHunter's busybox build with the applets its scripts expect.",
+      "why": "Userspace, system stage. Distinct from Brutal busybox: different applet set and different version."
+    },
+    {
+      "id": "lxc-ksu-action",
+      "name": "LXC + KernelSU Action",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/LXC_KernelSU_Action",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "LXC support wired through KernelSU.",
+      "why": "Included for completeness and flagged: LXC is a container runtime, which the one-userspace invariant refuses in an image. Selectable only for non-NUKI editions."
+    },
+    {
+      "id": "module-template-lua",
+      "name": "Module Template (Lua)",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/Module-Template-Lua",
+      "branch": "main",
+      "stage": "system",
+      "blurb": "Module template driven from Lua, for scripting an addon.",
+      "why": "A template, not a fix. Useful as the shape of a new addon rather than as something to install."
+    },
+    {
+      "id": "nethunter-ksu-module",
+      "name": "NetHunter KSU Module",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/Nethunter_KSU_Module",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "NetHunter's KernelSU-side module set.",
+      "why": "Kernel-adjacent and KSU-dependent, so it follows the root-manager choice."
+    },
+    {
+      "id": "abkcg-module-aosp61",
+      "name": "ABK CG Module (AOSP 6.1)",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/abkcg-module-aosp61",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "Cgroup module targeting the 6.1 kernel line.",
+      "why": "Carries its target kernel in its name: 6.1. The mobile target here is 5.10, so it is recorded with that constraint rather than offered blindly."
+    },
+    {
+      "id": "kpatch",
+      "name": "KPatch",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/kpatch_1",
+      "branch": "master",
+      "stage": "kernel",
+      "blurb": "Kernel live-patching support.",
+      "why": "Kernel stage only; useless as a userspace addon."
+    },
+    {
+      "id": "motorola-kernel-modules",
+      "name": "Motorola Kernel Modules",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/motorola-kernel-modules",
+      "branch": "android-10-release",
+      "stage": "kernel",
+      "blurb": "Motorola's own kernel modules. Branch is android-10-release.",
+      "why": "Version-matched to the vendor tree: the 5.10 genevn build cannot use android-10 modules. Kept as a source for reference and for older devices, with the branch stated."
+    },
+    {
+      "id": "nethunter-static-binaries",
+      "name": "NetHunter Static Binaries",
+      "kind": "userspace_tool",
+      "url": "https://github.com/015stray91/nethunter-static-binaries",
+      "branch": "master",
+      "stage": "system",
+      "blurb": "Static binaries NetHunter's tooling expects to find on PATH.",
+      "why": "Userspace, system stage; static so they do not care which libc the fused root uses."
+    },
+    {
+      "id": "searchsploit-module",
+      "name": "SearchSploit Module",
+      "kind": "userspace_tool",
+      "url": "https://github.com/015stray91/searchsploit-module",
+      "branch": "main",
+      "stage": "system",
+      "blurb": "SearchSploit offline exploit database as a module.",
+      "why": "Pure userspace data plus a script. System stage, no kernel constraint."
+    },
+    {
+      "id": "rs-module",
+      "name": "rs-module",
+      "kind": "kernel_module",
+      "url": "https://github.com/015stray91/rs-module",
+      "branch": "main",
+      "stage": "system",
+      "blurb": "Rust-based module.",
+      "why": "Rust compiles to the system stage normally, but a kernel-side Rust module would need kernel-stage tooling; recorded as system stage until its tree says otherwise."
+    },
+    {
+      "id": "nethunter-pro-ports",
+      "name": "NetHunter Pro Ports",
+      "kind": "userspace_tool",
+      "url": "https://github.com/015stray91/Nethunter-pro-ports",
+      "branch": "main",
+      "stage": "system",
+      "blurb": "Port set for Kali NetHunter Pro device bring-up.",
+      "why": "The desktop edition already merges NH Pro as its user space; this is the per-device port half."
+    },
+    {
+      "id": "gki-kernelsu-susfs",
+      "name": "GKI KernelSU + SUSFS",
+      "kind": "kernel_patch",
+      "url": "https://github.com/015stray91/GKI_KernelSU_SUSFS",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "GKI-shaped KernelSU plus SUSFS patch set.",
+      "why": "Overlaps the chosen root manager's own patch series. Selecting both would apply two SUSFS series to one tree, so the builder refuses that combination rather than producing conflicting hunks."
+    },
+    {
+      "id": "mksu-susfs",
+      "name": "MKSU + SUSFS",
+      "kind": "kernel_patch",
+      "url": "https://github.com/015stray91/MKSU-SUSFS",
+      "branch": "main",
+      "stage": "kernel",
+      "blurb": "MKSU variant with SUSFS.",
+      "why": "Same overlap rule as gki-kernelsu-susfs: one root manager and one SUSFS series per tree."
     }
   ],
   "ux_integrations": [

@@ -214,13 +214,6 @@ function sourceChoices(): { rom: CatalogChoice[]; mobile_linux: CatalogChoice[] 
   return catalogCache;
 }
 
-/** Pick the default option for a slot under an edition. */
-function defaultSelection(options: UxOption[], edition: Edition): string | null {
-  const forEdition = options.find((o) => !o.blocked && o.defaultFor?.includes(edition));
-  if (forEdition) return forEdition.id;
-  return null;
-}
-
 /**
  * The builder's UX array.
  *
@@ -251,28 +244,15 @@ export function uxSlots(
         blurb: (c.note ?? "").split(". ")[0] ?? "",
       }));
       const chosen = selection[d.id];
-      // The catalog is alphabetical by upstream name, which puts Sailfish first.
-      // Sailfish ships its own session inside its image and offers none of the
-      // catalog's shells, so defaulting to it lands the user on an empty next slot
-      // for no reason. Default to a distro that can actually reach a session.
-      const PREFERRED_DISTRO = "mobian";
-      const fallback =
-        options.find((o) => o.id === PREFERRED_DISTRO)?.id ??
-        options.find((o) => {
-          const e = UX_CATALOG.find((u) => u.id === o.id);
-          // A distro is usable as a default when some shell lists it.
-          return UX_CATALOG.some(
-            (u) => u.mechanism === "shell" && u.distros?.includes(o.id),
-          );
-        })?.id ??
-        options[0]?.id ??
-        null;
+      // No default. The chain is walked step by step: until the user picks a base
+      // ROM there is no base, and until they pick a distro there is no user space.
+      // Pre-selecting one would let a build start on a choice nobody made.
       return {
         id: d.id,
         label: d.label,
         meaning: d.meaning,
         required: d.required,
-        selected: options.some((o) => o.id === chosen) ? chosen! : fallback,
+        selected: options.some((o) => o.id === chosen) ? chosen! : null,
         options,
       };
     }
@@ -296,7 +276,8 @@ export function uxSlots(
       label: d.label,
       meaning: d.meaning,
       required: d.required,
-      selected: valid?.id ?? defaultSelection(options, edition),
+      // No default here either: a display owner is a decision, not a fallback.
+      selected: valid?.id ?? null,
       options,
     };
   });

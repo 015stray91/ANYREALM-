@@ -2,6 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
+import { dataFile, dataDirs, allowedRoots as allowedDataRoots, insideAllowed } from "./paths";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import http from "http";
@@ -35,6 +36,19 @@ import {
   type Structure,
 } from "./image-backends";
 import { duplicationCost, NATIVE_VS_UNIFIED, FUSED_PROPERTIES, DUPLICATED } from "./fusion-economics";
+import {
+  progressFromJobs,
+  chooseArtifact,
+  fetchDecision,
+  shouldKeepPolling,
+  describeWatch,
+  artifactDir,
+  uniquePath,
+  POLL_INTERVAL_MS,
+  MAX_POLLS,
+  type DispatchWatch,
+  type RunStatus,
+} from "./auto-fetch";
 import {
   resolveStylesheet, emitQmlTheme, bindComponents,
 } from "./glacier-qml-bridge";
@@ -652,7 +666,7 @@ app.post("/api/sudo/execute", (req, res) => {
  * ROM or an OS -- it was a mock-up of a builder.
  * ------------------------------------------------------------------------- */
 
-const CATALOG_FILE = path.join(process.cwd(), "sources-catalog.json");
+const CATALOG_FILE = dataFile("sources-catalog.json");
 
 // The buildable upstream sources: custom ROM trees, mobile Linux distros,
 // desktop Linux distros, and kernel trees.
@@ -952,6 +966,181 @@ app.post("/api/compose", async (req, res) => {
 });
 
 // Dispatch a composed workflow, on the fork's own account.
+// ---------------------------------------------------------------------------
+// Auto-fetch: watch a dispatched run and pull its artefact when it succeeds.
+//
+// Both shells use these three routes, so the polling rules live in one place. The
+// desktop app and the APK differ only in where the file ends up.
+// ---------------------------------------------------------------------------
+
+/** In-memory watches, keyed by `owner/repo/runId`. A restart loses them; the run
+ *  still exists on GitHub, so a shell can re-attach with POST /watch/attach. */
+const watches = new Map<string, DispatchWatch>();
+
+function watchKey(owner: string, repo: string, runId: number): string {
+  return `${owner}/${repo}/${runId}`;
+}
+
+/** Read the run's jobs to get a step-level progress number. */
+async function stepProgress(owner: string, repo: string, runId: number) {
+  const r = await gh(`/repos/${owner}/${repo}/actions/runs/${runId}/jobs`);
+  if (r.status !== 200) return [];
+  const steps: Array<{ status: string; conclusion?: string | null }> = [];
+  for (const job of r.body?.jobs ?? []) for (const st of job.steps ?? []) steps.push(st);
+  return steps;
+}
+
+/** Poll one watch once and update it in place. */
+async function pollWatch(w: DispatchWatch): Promise<DispatchWatch> {
+  const r = await gh(`/repos/${w.owner}/${w.repo}/actions/runs/${w.runId}`);
+  w.polls += 1;
+  w.lastPollAt = new Date().toISOString();
+
+  if (r.status === 404) {
+    w.error = `run ${w.runId} not found (it may have been deleted or the token lacks access)`;
+    return w;
+  }
+  if (r.status !== 200) {
+    // A transient failure should not kill the watch; only a budget overrun does.
+    w.error = r.body?.message ? `${r.status} ${r.body.message}` : `status ${r.status}`;
+    return w;
+  }
+
+  const body = r.body ?? {};
+  w.status = (body.status ?? "unknown") as RunStatus;
+  w.conclusion = body.conclusion ?? undefined;
+  w.error = undefined;
+
+  const steps = await stepProgress(w.owner, w.repo, w.runId!);
+  w.progress = progressFromJobs(w.status, steps);
+
+  if (w.status === "completed" && w.conclusion === "success") {
+    const a = await gh(`/repos/${w.owner}/${w.repo}/actions/runs/${w.runId}/artifacts`);
+    if (a.status === 200) {
+      w.artifacts = (a.body?.artifacts ?? []).map((x: any) => ({
+        id: x.id,
+        name: x.name,
+        sizeBytes: x.size_in_bytes ?? 0,
+      }));
+    }
+  }
+  return w;
+}
+
+/** Download one artefact to the user's artefact directory. */
+async function downloadArtifact(
+  w: DispatchWatch,
+  artifactId: number,
+): Promise<{ path?: string; error?: string }> {
+  const art = w.artifacts.find((a) => a.id === artifactId);
+  if (!art) return { error: `no artefact ${artifactId} on run ${w.runId}` };
+  // gh() parses JSON, which is wrong for a zip, so this goes through fetch
+  // directly with the same credentials rather than teaching gh() about binary.
+  const token = ghToken();
+  const res = await fetch(
+    `https://api.github.com/repos/${w.owner}/${w.repo}/actions/artifacts/${artifactId}/zip`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "User-Agent": "anyrealm-builder",
+        Accept: "application/vnd.github+json",
+      },
+      redirect: "follow",
+    },
+  );
+  if (!res.ok) return { error: `download failed: HTTP ${res.status}` };
+  const buf = Buffer.from(await res.arrayBuffer());
+  const out = uniquePath(artifactDir(), `${art.name}.zip`);
+  fs.writeFileSync(out, buf);
+  w.downloadedTo = out;
+  return { path: out };
+}
+
+app.post("/api/fetch/watch", async (req, res) => {
+  const { owner, repo, workflow, edition, runId } = req.body ?? {};
+  if (!owner || !repo) return res.status(400).json({ error: "owner and repo are required" });
+  if (runId === undefined || runId === null) {
+    return res.status(400).json({ error: "runId is required; dispatch first, then watch its run" });
+  }
+  if (!ghToken()) {
+    return res.status(401).json({ error: "no GITHUB_TOKEN configured, so the run cannot be read" });
+  }
+  const w: DispatchWatch = {
+    owner,
+    repo,
+    workflow: workflow ?? "(unknown workflow)",
+    edition: edition ?? "desktop_iso",
+    runId: Number(runId),
+    startedAt: new Date().toISOString(),
+    status: "queued",
+    progress: 0,
+    artifacts: [],
+    polls: 0,
+  };
+  watches.set(watchKey(w.owner, w.repo, w.runId!), w);
+  try {
+    await pollWatch(w);
+    res.json({ watch: w, line: describeWatch(w) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Poll every watch once and report. The shell calls this on a timer. */
+app.post("/api/fetch/poll", async (_req, res) => {
+  const out: Array<{ watch: DispatchWatch; line: string; done: boolean; reason?: string }> = [];
+  for (const w of watches.values()) {
+    const gate = shouldKeepPolling(w);
+    if (!gate.keep) {
+      out.push({ watch: w, line: describeWatch(w), done: true, reason: gate.reason });
+      continue;
+    }
+    try {
+      await pollWatch(w);
+    } catch (err: any) {
+      w.error = err.message;
+    }
+    const after = shouldKeepPolling(w);
+    out.push({ watch: w, line: describeWatch(w), done: !after.keep, reason: after.reason });
+  }
+  res.json({ watches: out });
+});
+
+/** Fetch the artefact for a watch that reached a successful completion. */
+app.post("/api/fetch/download", async (req, res) => {
+  const { owner, repo, runId, artifactId } = req.body ?? {};
+  const w = watches.get(watchKey(owner, repo, Number(runId)));
+  if (!w) return res.status(404).json({ error: "no watch for that run; create one first" });
+
+  if (w.status !== "completed" || w.artifacts.length === 0) {
+    // Re-read once: the shell may have called download before its last poll landed.
+    await pollWatch(w);
+  }
+  const decision = fetchDecision(w);
+  if (!decision.fetch) return res.status(409).json({ error: decision.reason, watch: w });
+
+  const pick = artifactId
+    ? w.artifacts.find((a) => a.id === Number(artifactId))
+    : chooseArtifact(w.edition, w.artifacts);
+  if (!pick) return res.status(409).json({ error: "no artefact to fetch", watch: w });
+
+  try {
+    const got = await downloadArtifact(w, pick.id);
+    if (got.error) return res.status(502).json({ error: got.error, watch: w });
+    res.json({ watch: w, path: got.path, line: describeWatch(w) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/fetch/watches", (_req, res) => {
+  res.json({
+    watches: [...watches.values()].map((w) => ({ ...w, line: describeWatch(w) })),
+    intervalMs: POLL_INTERVAL_MS,
+    maxPolls: MAX_POLLS,
+  });
+});
+
 app.post("/api/dispatch", async (req, res) => {
   const { target, workflowFile, inputs } = req.body ?? {};
   try {
@@ -1238,7 +1427,7 @@ app.get("/api/capabilities", (_req, res) => {
 // ---------------------------------------------------------------------------
 
 function readToolchainCatalog(): any {
-  const p = path.join(process.cwd(), "toolchains-catalog.json");
+  const p = dataFile("toolchains-catalog.json");
   if (!fs.existsSync(p)) throw new Error("toolchains-catalog.json is missing");
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
@@ -1326,7 +1515,7 @@ app.post("/api/fuse", (req, res) => {
   // unless the caller names one explicitly. This is the one guard that stops a
   // browser tab from filling / with copies of /usr.
   const outAbs = path.resolve(output);
-  const allowedRoots = [process.cwd(), "/tmp", "/var/tmp"];
+  const allowedRoots = allowedDataRoots();
   if (!allowedRoots.some((r) => outAbs === r || outAbs.startsWith(r + path.sep))) {
     return res.status(403).json({
       error: `output must be inside the workspace or /tmp; got ${outAbs}`,
@@ -1374,7 +1563,7 @@ app.get("/api/theme", (req, res) => {
   const cssPath = String(req.query.css ?? "");
   if (!cssPath) return res.status(400).json({ error: "css query param required (path to tokens.css)" });
   const abs = path.resolve(cssPath);
-  const allowed = [process.cwd(), "/tmp", "/var/tmp", "/home/ubuntu"];
+  const allowed = allowedDataRoots();
   if (!allowed.some((r) => abs === r || abs.startsWith(r + path.sep))) {
     return res.status(403).json({ error: `css must be inside the workspace or /tmp; got ${abs}` });
   }
@@ -1421,7 +1610,7 @@ app.post("/api/theme/bind", (req, res) => {
   const cssPath = String(req.body?.css ?? "");
   const specPath = String(req.body?.spec ?? "");
   if (!cssPath || !specPath) return res.status(400).json({ error: "css and spec paths required" });
-  const allowed = [process.cwd(), "/tmp", "/var/tmp", "/home/ubuntu"];
+  const allowed = allowedDataRoots();
   const checkPath = (p: string) => {
     const a = path.resolve(p);
     if (!allowed.some((r) => a === r || a.startsWith(r + path.sep))) {
@@ -1462,7 +1651,7 @@ app.get("/api/invariant", (req, res) => {
   const root = String(req.query.root ?? "");
   if (!root) return res.status(400).json({ error: "root query param required" });
   const abs = path.resolve(root);
-  const allowed = [process.cwd(), "/tmp", "/var/tmp", "/home/ubuntu"];
+  const allowed = allowedDataRoots();
   if (!allowed.some((r) => abs === r || abs.startsWith(r + path.sep))) {
     return res.status(403).json({ error: `root must be inside the workspace or /tmp; got ${abs}` });
   }
@@ -1609,7 +1798,7 @@ interface OAuthProfile {
   isDemo: boolean;
 }
 
-const PROFILES_FILE = path.join(process.cwd(), "connected_profiles.json");
+const PROFILES_FILE = dataFile("connected_profiles.json");
 
 function loadProfiles(): Record<string, OAuthProfile> {
   try {
@@ -2294,7 +2483,7 @@ async function setupServer() {
     app.use(vite.middlewares);
   } else {
     console.log("Serving static production files from dist...");
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = dataFile("dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
