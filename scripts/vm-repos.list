@@ -20,7 +20,9 @@ https://github.com/015stray91/ANYREALM-.git ANYREALM- main
 # Kernels. These are the only two structures that ship as NUKI, and they never
 # cross: zenith is x86_64 desktop, genevn is arm64 mobile.
 https://github.com/015stray91/AR-NUKI-genevn.git AR-NUKI-genevn
-https://github.com/015stray91/kernel-zenith.git kernel-zenith
+# Branch is pinned where it is not `main`: a clone that quietly takes the wrong
+# branch builds the wrong kernel and reports a source error much later.
+https://github.com/015stray91/kernel-zenith.git kernel-zenith 6.12_android-x86
 
 # Mobile Linux UX. phosh-ux + phoc + lomiri + lipstick cover every display
 # owner the UX picker offers, and mobian supplies the debos recipes that build
@@ -28,8 +30,8 @@ https://github.com/015stray91/kernel-zenith.git kernel-zenith
 https://github.com/015stray91/phosh-ux.git phosh-ux
 https://github.com/015stray91/phoc.git phoc
 https://github.com/015stray91/lomiri.git lomiri
-https://github.com/015stray91/lipstick.git lipstick
-https://github.com/015stray91/mobian.git mobian
+https://github.com/015stray91/lipstick.git lipstick master
+https://github.com/015stray91/mobian.git mobian master
 
 # Root manager sources. KernelSU-Next is the default; the shared tree also
 # carries the other variants the picker offers.
