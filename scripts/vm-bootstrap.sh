@@ -75,15 +75,28 @@ else
   echo "  all ${#PKGS[@]} already present"
 fi
 
-# debos is packaged on Debian but not on every Ubuntu release, so fall back to
-# building it from its own Go source rather than leaving the step absent.
+# debos is not in Ubuntu 24.04 at all, so it is built from source. Its go.mod
+# requires Go 1.24 while 24.04 packages 1.22, which fails with "go.mod requires
+# go >= 1.24" rather than anything about debos. The toolchain is therefore
+# taken from upstream Go, matching debos' own requirement.
 if ! have debos; then
-  say "debos (not packaged; building from source)"
-  if ! have go; then
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends golang-go
+  say "debos (built from source; upstream Go toolchain)"
+  GO_VER=1.24.0
+  if ! have go || ! go version | grep -q "go1\.2[4-9]\|go1\.[3-9][0-9]"; then
+    if [ ! -x /usr/local/go/bin/go ]; then
+      echo "  fetching go${GO_VER}"
+      curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -o /tmp/go.tgz
+      sudo rm -rf /usr/local/go
+      sudo tar -C /usr/local -xzf /tmp/go.tgz
+      rm -f /tmp/go.tgz
+    fi
+    export PATH="/usr/local/go/bin:$PATH"
   fi
-  go install github.com/go-debos/debos/cmd/debos@latest
-  sudo install -m 0755 "$(go env GOPATH)/bin/debos" /usr/local/bin/debos
+  echo "  go       $(go version)"
+  # GOFLAGS keeps the module cache inside the build user's home, so this does
+  # not need root and survives as a normal cache for later rebuilds.
+  GOBIN="$HOME/.local/bin" go install github.com/go-debos/debos/cmd/debos@latest
+  sudo install -m 0755 "$HOME/.local/bin/debos" /usr/local/bin/debos
 fi
 echo "  debos    $(debos --version 2>&1 | head -1 || echo 'version flag unsupported')"
 
