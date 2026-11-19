@@ -39,9 +39,18 @@ else
 fi
 
 # Dependencies only when the lockfile changed relative to the tree that built.
+#
+# npm ci, not npm install. The two machines run different npm majors (10 here,
+# 11 in the workspace), and npm 10 rewrites package-lock.json on install --
+# dropping the "libc" fields npm 11 writes. That single field made the VM dirty
+# after every sync, which is exactly how a build target starts drifting.
+#
+# npm ci installs strictly from the lockfile and never writes to it, so a clean
+# tree stays clean no matter which npm runs it.
 say "checking dependencies"
 if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
-  npm install --no-audit --no-fund 2>&1 | tail -4 || fail "npm install failed"
+  rm -rf node_modules
+  npm ci --no-audit --no-fund 2>&1 | tail -4 || fail "npm ci failed"
 else
   echo "node_modules is newer than the lockfile -- skipping install"
 fi
@@ -63,7 +72,12 @@ printf 'assets      %s files\n' "$(find dist/assets -type f 2>/dev/null | wc -l)
 say "tree state"
 dirty=$(git status --porcelain | wc -l)
 printf 'dirty files: %s\n' "$dirty"
-[ "$dirty" = "0" ] || echo "note: working tree is dirty (the build should not dirty a clean tree)"
+if [ "$dirty" != "0" ]; then
+  git status --porcelain
+  # A build target that gains local edits is the drift this script exists to
+  # prevent, so treat it as a failure rather than a note.
+  fail "the synced tree is dirty -- something wrote to tracked files"
+fi
 
 cat <<EOF
 
