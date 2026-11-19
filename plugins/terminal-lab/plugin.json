@@ -1,0 +1,18 @@
+{
+  "id": "terminal-lab",
+  "name": "Terminal",
+  "version": "1.0.0",
+  "description": "A real shell in the builder, over a PTY. Not a command runner that captures output: a persistent session with a tty, so interactive tools, prompts, colours and Ctrl-C behave. Each session is bounded by a deadline and a scrollback cap so a forgotten tab cannot fill the disk.",
+  "category": "plugins",
+  "kind": "panel",
+  "requires": [],
+  "panels": [
+    {
+      "id": "terminal-lab.panel",
+      "title": "Terminal",
+      "subtitle": "A real PTY-backed shell, with sessions you can see and end",
+      "icon": "Terminal",
+      "endpoint": "/sessions"
+    }
+  ]
+}
