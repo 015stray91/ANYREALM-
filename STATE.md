@@ -10,7 +10,7 @@ line — a stale note is worse than no note.
 |---|---|---|---|
 | **Azure VM** | model server **and** build engine | `ssh -i ~/.ssh/anyrealm-vm slm015@20.85.217.8` | up, 4 cores, 31 GB, 99 GB free on `/`, 82 GB on `/mnt` |
 | **AWS** | engine that you deleted | — | **nothing exists.** No instance, no key, no cost |
-| **this workspace** | editing + the app's preview | `/home/ubuntu/project` | 16 GB disk, ~2.3 GB free |
+| **this workspace** | editing + the app's preview | `/home/ubuntu/project` | 16 GB disk, 3.0 GB free |
 
 The Azure box is both roles. It is **not** two machines, and it is not the AWS
 box. It stays up until the shutdown timer fires.
@@ -76,7 +76,7 @@ Android toolchain, verified present:
   not in a shell profile — so it exists for a workflow and not only for a login
 - platforms: `android-37.0` · build-tools: `36.0.0` · JDK 21
 
-## Workspace copy on Azure (migrated tonight)
+## Workspace copy on Azure — the durable home
 
 `/home/slm015/anyrealm-workspace` — the whole workspace, 7.1 MB, git history
 intact, tree clean at commit `7bf8ca3`. Excludes `node_modules`, `dist`.
@@ -85,7 +85,9 @@ Node 22.23.5 / npm are installed there (`/usr/bin/node`). Bun 1.4.4 is also
 present, but the project's own scripts shell out to `npm run`, so Node is the
 toolchain that matters.
 
-Not yet done there: `npm install`, and a build to prove it runs.
+Done there: `npm ci`, typecheck, build, and a full desktop build through the
+runner. This copy is where history, docs and build output live; the local one is
+for editing only, which is why it can stay small.
 
 ## AWS CLI
 
@@ -113,9 +115,39 @@ Proven: model answers through the tunnel · service restarts on crash · runner
 services active · Android SDK env in the runner · git history clean and pushed ·
 APK Studio builds, signs and verifies a real APK (independent `apksigner verify`).
 
-Not proven: **a build dispatched through the runner end to end** · llama unit
-across a reboot · the shipped ISO booting on real hardware · kiofuse link to the
-laptop (`/mnt/laptop-room` returns EIO — stale sshfs, laptop asleep).
+**A full desktop build through the runner — done 2026-11-19, run `44640577263`,
+`success`.** Not by reading the green tick: the artifact was downloaded and
+opened. Deb `anyrealm-builder_0.1.0_amd64.deb` reports correct package metadata
+and 12,416 files; the AppImage extracts to 11,231 files with its binary and
+desktop entry. Artifacts kept at
+`/home/slm015/_work/ANYREALM-/ANYREALM-/release/` (545 MB + 395 MB).
+
+That run followed two failures in 7 s and 11 s. They were not the machine:
+`@xterm/addon-fit` was in `package.json` but missing from `bun.lock`, so
+`bun install --frozen-lockfile` refused. Fixed in `99b4539`.
+
+Not proven: llama unit across a reboot · the shipped ISO booting on real hardware
+· kiofuse link to the laptop (`/mnt/laptop-room` returns EIO — stale sshfs,
+laptop asleep).
+
+## Two copies, one author
+
+The VM clone is a **build target, not a second author**. Editing in both places
+is what split the histories and made builds run against trees that were not in
+git.
+
+- `scripts/vm-guard.sh` — installs a pre-commit hook on the VM that refuses to
+  commit. It proves the refusal by attempting one.
+- `scripts/vm-sync.sh` — fetch, `--ff-only` merge, `npm ci`, typecheck, build,
+  then open `dist/` and count. Fails if the synced tree is dirty.
+
+`npm ci`, not `npm install`: the VM runs npm 10 and this workspace npm 11, and
+npm 10 rewrites `package-lock.json` (drops `libc` fields). Every install dirtied
+the tree — the seed of the drift. `npm ci` never writes to the lockfile.
+
+Verified 2026-11-19: VM level with `origin/main`, typecheck exit 0, build exit 0,
+`dist/server.cjs` 316 KB, 4 assets, 0 dirty files. 94 GB free on `/` after a
+1 GB build — the reason the build output lives there and not here.
 
 ## The kiofuse link
 
