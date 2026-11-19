@@ -77,7 +77,10 @@ function sshKey() {
 export function sshExec(endpoint, command, timeoutMs = 60000) {
   return new Promise((resolve) => {
     const args = [
-      "-i", sshKey(),
+      // The endpoint's own key wins. A single global key means the second
+      // machine you add fails to authenticate and looks unreachable, which
+      // sends you looking at the network instead of at the key.
+      "-i", expandKey(endpoint.identity) ?? sshKey(),
       "-o", "BatchMode=yes",
       "-o", "StrictHostKeyChecking=no",
       "-o", "ConnectTimeout=10",
@@ -337,6 +340,10 @@ export function createVm(ctx) {
             "git --version 2>/dev/null | head -1 || echo git:no",
             "command -v make >/dev/null && echo make:yes || echo make:no",
             "command -v gcc >/dev/null && echo gcc:yes || echo gcc:no",
+            // The CLI is what makes an AWS box useful to this app; a box that
+            // answers ssh but has no aws is reachable and not yet an engine.
+            "(aws --version 2>/dev/null | head -1) || echo aws:no",
+            "aws sts get-caller-identity --profile anyrealm --output json 2>/dev/null | tr -d '\n' || echo signedout",
             "pwd",
           ].join("; ");
 
@@ -376,7 +383,19 @@ export function createVm(ctx) {
             git: (lines[4] ?? "").replace("git version ", "").trim() || "missing",
             make: (lines[5] ?? "").includes("yes"),
             gcc: (lines[6] ?? "").includes("yes"),
-            cwd: lines[7] ?? "",
+            awsCli: (lines[7] ?? "").includes("aws-cli") ? (lines[7] ?? "").trim() : null,
+            // "signed in" is reported as a fact from sts, not inferred from the
+            // presence of a config file: a profile with a region and no
+            // credentials looks configured and is not.
+            awsSignedIn: (() => {
+              try {
+                const j = JSON.parse(lines[8] ?? "");
+                return j?.Account ? { account: j.Account, arn: j.Arn } : false;
+              } catch {
+                return false;
+              }
+            })(),
+            cwd: lines[9] ?? "",
           };
 
     ep.lastProbe = outcome;
