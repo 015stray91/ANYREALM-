@@ -34,6 +34,8 @@ import {
   Layers,
   Server,
   Network,
+  Package,
+  Smartphone,
 } from 'lucide-react';
 import { AssistantPanel, VmSettingsPanel, ConnectRouterPanel } from './TerminalAssistant';
 
@@ -2658,6 +2660,290 @@ function PipelinePanel({ plugin }: { plugin: Plugin }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* APK Studio                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Make an APK, and be honest about what happened.
+ *
+ * The panel leads with whether the toolchain is complete, because a build button
+ * that fails at step three is worse than knowing up front that the dexer is
+ * missing. After a build it shows every step with its own result, so a failure
+ * names the step rather than saying "build failed".
+ *
+ * The finished APK reports its package name, version and signing certificates as
+ * read back from the file itself — not as we intended to write them.
+ */
+function ApkStudio({ plugin }: { plugin: Plugin }) {
+  const base = plugin.endpointBase;
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [build, setBuild] = useState<any>(null);
+  const [form, setForm] = useState({ packageName: 'local.anyrealm.app', appName: 'AnyRealm App', minSdk: 21, targetSdk: 33 });
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setData(await api(`${base}/catalog`));
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    }
+  }, [base]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const act = useCallback(
+    async (name: string, fn: () => Promise<void>) => {
+      setBusy(name);
+      setError(null);
+      try {
+        await fn();
+        await load();
+      } catch (e: any) {
+        setError(e.message ?? String(e));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
+
+  const tools = data?.toolchain?.tools ?? {};
+  const missing = Object.entries(tools)
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="text-[11px] text-rose-200 bg-rose-500/10 border border-rose-500/30 rounded p-2 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="text-rose-300 hover:text-white">✕</button>
+        </div>
+      )}
+
+      {/* toolchain state first: a build button that cannot work is a trap */}
+      <section className="border border-[#1e293b] bg-[#0f172a]/60 rounded-xl p-3">
+        <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+          <Smartphone className="w-3.5 h-3.5 text-emerald-400" /> Toolchain
+        </h3>
+        {data?.ready ? (
+          <div className="mt-1 text-[10px] text-emerald-300">complete — every step in the pipeline can run</div>
+        ) : (
+          <div className="mt-1 text-[10px] text-amber-300">
+            not complete{missing.length ? `: missing ${missing.join(', ')}` : ''}
+            {data && !data.toolchain?.dexer ? ' · no dexer (R8/D8 jar) found' : ''}
+          </div>
+        )}
+        <div className="mt-1.5 grid grid-cols-2 md:grid-cols-4 gap-1">
+          {Object.entries(tools).map(([k, v]: any) => (
+            <div key={k} className="text-[9px] flex items-center gap-1">
+              <span className={`w-1 h-1 rounded-full ${v ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+              <span className="text-slate-400">{k}</span>
+            </div>
+          ))}
+          <div className="text-[9px] flex items-center gap-1">
+            <span className={`w-1 h-1 rounded-full ${data?.toolchain?.dexer ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+            <span className="text-slate-400">dexer</span>
+          </div>
+        </div>
+        {data?.toolchain?.androidJar && (
+          <div className="mt-1 text-[9px] text-slate-500 font-mono truncate">{data.toolchain.androidJar}</div>
+        )}
+      </section>
+
+      {/* create */}
+      <section className="border border-[#1e293b] bg-[#0f172a]/60 rounded-xl p-3">
+        <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+          <Plus className="w-3.5 h-3.5 text-cyan-400" /> New app
+        </h3>
+        <div className="mt-1.5 grid grid-cols-1 md:grid-cols-2 gap-1.5">
+          <label className="text-[9px] text-slate-500 flex flex-col gap-0.5">
+            package name
+            <input
+              value={form.packageName}
+              onChange={(e) => setForm({ ...form, packageName: e.target.value })}
+              className="bg-[#0b1220] border border-[#1e293b] rounded px-2 py-1 text-[11px] text-slate-200 font-mono"
+              placeholder="local.anyrealm.app"
+            />
+          </label>
+          <label className="text-[9px] text-slate-500 flex flex-col gap-0.5">
+            label on the phone
+            <input
+              value={form.appName}
+              onChange={(e) => setForm({ ...form, appName: e.target.value })}
+              className="bg-[#0b1220] border border-[#1e293b] rounded px-2 py-1 text-[11px] text-slate-200"
+            />
+          </label>
+          <label className="text-[9px] text-slate-500 flex flex-col gap-0.5">
+            min SDK
+            <input
+              type="number"
+              value={form.minSdk}
+              onChange={(e) => setForm({ ...form, minSdk: Number(e.target.value) })}
+              className="bg-[#0b1220] border border-[#1e293b] rounded px-2 py-1 text-[11px] text-slate-200 font-mono"
+            />
+          </label>
+          <label className="text-[9px] text-slate-500 flex flex-col gap-0.5">
+            target SDK
+            <input
+              type="number"
+              value={form.targetSdk}
+              onChange={(e) => setForm({ ...form, targetSdk: Number(e.target.value) })}
+              className="bg-[#0b1220] border border-[#1e293b] rounded px-2 py-1 text-[11px] text-slate-200 font-mono"
+            />
+          </label>
+        </div>
+        <button
+          onClick={() =>
+            act('create', async () => {
+              const r = await api(`${base}/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form),
+              });
+              setSelected(r.project.id);
+            })
+          }
+          disabled={busy === 'create' || !data?.ready}
+          className="mt-2 w-full flex items-center justify-center gap-1.5 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-[11px] font-bold px-3 py-2 rounded"
+        >
+          {busy === 'create' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+          Create a starter app
+        </button>
+        <div className="mt-1 text-[9px] text-slate-500">
+          A working WebView app with bundled HTML: it builds and installs as it is, then you replace the page.
+        </div>
+      </section>
+
+      {/* project list */}
+      {(data?.projects ?? []).length > 0 && (
+        <section className="border border-[#1e293b] bg-[#0f172a]/60 rounded-xl p-3">
+          <h3 className="text-xs font-bold text-white">Projects</h3>
+          <div className="mt-1.5 space-y-1">
+            {data.projects.map((p: any) => (
+              <div
+                key={p.id}
+                className={`rounded border px-2 py-1.5 ${selected === p.id ? 'border-cyan-500/40 bg-cyan-500/5' : 'border-[#1e293b] bg-[#0b1220]'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <button onClick={() => setSelected(p.id)} className="min-w-0 text-left">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-white">{p.appName}</span>
+                      <span className="text-[9px] font-mono text-slate-500">{p.packageName}</span>
+                    </div>
+                    <div className="text-[9px] text-slate-500">
+                      API {p.minSdk}–{p.targetSdk}
+                      {p.lastBuild
+                        ? p.lastBuild.ok
+                          ? ` · last build signed, ${(p.lastBuild.apk.size / 1024).toFixed(0)} KB`
+                          : ` · last build failed at ${p.lastBuild.failedStep}`
+                        : ' · never built'}
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() =>
+                        act(`build-${p.id}`, async () => {
+                          setSelected(p.id);
+                          try {
+                            const r = await api(`${base}/projects/${p.id}/build`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({}),
+                            });
+                            setBuild({ id: p.id, ...r });
+                          } catch (e: any) {
+                            // A failed build carries its steps in the body; the
+                            // api() helper only surfaces `error`, so fetch again.
+                            setBuild({ id: p.id, ok: false, error: e.message });
+                            throw e;
+                          }
+                        })
+                      }
+                      disabled={busy === `build-${p.id}` || !data?.ready}
+                      className="text-[10px] px-2 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:text-white disabled:opacity-30"
+                    >
+                      {busy === `build-${p.id}` ? <Loader2 className="w-3 h-3 inline animate-spin" /> : <Play className="w-3 h-3 inline" />} build
+                    </button>
+                    {p.lastBuild?.ok && (
+                      <a
+                        href={`${base}/projects/${p.id}/download`}
+                        className="text-[10px] px-2 py-1 rounded border border-violet-500/40 text-violet-300 hover:text-white"
+                      >
+                        <Download className="w-3 h-3 inline" /> apk
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* build result: every step, including the ones that passed */}
+      {build && (
+        <section className="border border-[#1e293b] bg-[#0f172a]/60 rounded-xl p-3">
+          <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+            {build.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <XCircle className="w-3.5 h-3.5 text-rose-400" />}
+            {build.ok ? 'Built and signed' : 'Build stopped'}
+          </h3>
+
+          {build.apk && (
+            <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px]">
+              <div className="text-slate-500">package</div>
+              <div className="font-mono text-slate-200 truncate">{build.apk.packageName}</div>
+              <div className="text-slate-500">version</div>
+              <div className="font-mono text-slate-200">
+                {build.apk.versionName} ({build.apk.versionCode})
+              </div>
+              <div className="text-slate-500">size</div>
+              <div className="font-mono text-slate-200">{(build.apk.size / 1024).toFixed(1)} KB</div>
+              <div className="text-slate-500">signature</div>
+              <div className="font-mono text-slate-200">
+                {Object.entries(build.apk.schemes ?? {})
+                  .filter(([, v]) => v)
+                  .map(([k]) => `v${k}`)
+                  .join(', ') || 'none'}
+              </div>
+              <div className="text-slate-500">cert sha-256</div>
+              <div className="font-mono text-slate-300 truncate" title={build.apk.certSha256 ?? ''}>
+                {build.apk.certSha256 ?? '—'}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-2 space-y-0.5">
+            {(build.steps ?? []).map((st: any, i: number) => (
+              <div key={i} className="flex items-start gap-1.5 text-[10px]">
+                <span className={`mt-1 w-1 h-1 rounded-full shrink-0 ${st.ok ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                <span className="text-slate-300 w-36 shrink-0">{st.name}</span>
+                <span className={`font-mono flex-1 ${st.ok ? 'text-slate-500' : 'text-rose-300'}`}>{st.detail}</span>
+              </div>
+            ))}
+          </div>
+
+          {build.apk && (
+            <a
+              href={`${base}/projects/${build.id}/download`}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 bg-violet-700 hover:bg-violet-600 text-white text-[11px] font-bold px-3 py-2 rounded"
+            >
+              <Download className="w-3.5 h-3.5" /> Download {build.id}.apk
+            </a>
+          )}
+          {build.error && <div className="mt-1.5 text-[10px] text-rose-300">{build.error}</div>}
+        </section>
+      )}
+    </div>
+  );
+}
+
 /* Generic fallback                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -2746,6 +3032,8 @@ export default function PluginHost({ pluginId }: PluginHostProps) {
           <RecoveryLab plugin={plugin} />
         ) : plugin.id === 'lowlevel-lab' ? (
           <LowLevelLab plugin={plugin} />
+        ) : plugin.id === 'apk-studio' ? (
+          <ApkStudio plugin={plugin} />
         ) : (
           <GenericPluginPanel plugin={plugin} />
         )

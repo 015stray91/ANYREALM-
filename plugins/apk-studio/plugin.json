@@ -1,0 +1,18 @@
+{
+  "id": "apk-studio",
+  "name": "APK Studio",
+  "version": "1.0.0",
+  "description": "Build an installable Android APK from a small project: compile Java, package assets with aapt, dex with R8/D8, align with zipalign and sign with apksigner. The result is verified before it is offered, because an APK that fails to install on a phone is worse than no APK.",
+  "category": "plugins",
+  "kind": "panel",
+  "requires": ["java", "javac", "aapt", "zipalign", "apksigner", "keytool"],
+  "panels": [
+    {
+      "id": "apk-studio.panel",
+      "title": "APK Studio",
+      "subtitle": "Make a signed, installable APK from source you can see",
+      "icon": "Package",
+      "endpoint": "/catalog"
+    }
+  ]
+}
