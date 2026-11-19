@@ -1,0 +1,17 @@
+{
+  "id": "lowlevel-lab",
+  "name": "Low-Level Research Lab",
+  "version": "1.0.0",
+  "description": "Research and recovery transports below fastboot. EDL (Qualcomm 9008 emergency download) via firehose, EUD (Qualcomm/Apple emergency USB download), QDL (the open firehose loader), and Hexagon DSP image work. Each transport has a different protocol, a different tool, and a different way to brick the device.",
+  "category": "plugins",
+  "requires": ["lsusb", "python3"],
+  "panels": [
+    {
+      "id": "lowlevel-lab.panel",
+      "title": "Low-Level Lab",
+      "subtitle": "EDL / EUD / QDL / Hexagon — transports, loaders and image formats",
+      "icon": "Cpu",
+      "endpoint": "/catalog"
+    }
+  ]
+}

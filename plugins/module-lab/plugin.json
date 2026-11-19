@@ -1,0 +1,17 @@
+{
+  "id": "module-lab",
+  "name": "LKM / KPM Module Lab",
+  "version": "1.0.0",
+  "description": "Inspect, verify and scaffold out-of-tree kernel modules. Handles the two formats this project actually ships: LKM (.ko, buildable against a kernel tree) and KPM (.kpm, KernelPatch modules for arm64, loaded with kpatch rather than insmod).",
+  "category": "plugins",
+  "requires": ["modinfo", "readelf", "nm"],
+  "panels": [
+    {
+      "id": "module-lab.panel",
+      "title": "Module Lab",
+      "subtitle": "Vermagic, symbols, taint and build scaffolding for LKM and KPM",
+      "icon": "Cpu",
+      "endpoint": "/catalog"
+    }
+  ]
+}

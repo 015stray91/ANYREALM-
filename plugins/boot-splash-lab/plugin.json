@@ -1,0 +1,18 @@
+{
+  "id": "boot-splash-lab",
+  "name": "Boot Splash & Animation",
+  "version": "1.0.0",
+  "description": "Generate a boot splash and a boot animation, then package them as exist: an Android bootanimation.zip (desc.txt + PNG frames, stored uncompressed) and a Plymouth theme for the x86_64 ISO. Frames are painted here, not downloaded, so the result works on a machine with no image tools.",
+  "category": "plugins",
+  "kind": "panel",
+  "requires": [],
+  "panels": [
+    {
+      "id": "boot-splash-lab.panel",
+      "title": "Boot Splash & Animation",
+      "subtitle": "Paint a splash, animate it, package for Android or Plymouth",
+      "icon": "Sparkles",
+      "endpoint": "/formats"
+    }
+  ]
+}

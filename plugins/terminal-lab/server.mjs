@@ -29,6 +29,10 @@ import { mount as mountAssistant } from "../ai-engine/engine.mjs";
 // through. Keeping it here rather than in a separate panel means one screen
 // holds the shell, the question box, and the machine that answers.
 import { createVm } from "./vm.mjs";
+// The join between the terminal's machines and the platform's compile router.
+import { mountConnectRouter } from "./connect-router.mjs";
+// Model providers that are an API rather than a machine.
+import { createProviders } from "./providers.mjs";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -205,10 +209,58 @@ export async function register(ctx) {
   // /ai/status, /ai/ask, /ai/history, /ai/provider/test
   // The model is whatever the model connection currently serves, not a fixed
   // environment variable.
+  const providers = createProviders(ctx);
+
   await mountAssistant(ctx, "/ai", {
+    // Two ways to reach a model: an activated API key, or the VM tunnel.
+    getApiProvider: () => providers.runtime(),
     getProviderBase: () => vm.providerBase(),
     getModelName: () => vm.providerModel(),
   });
+
+  /* ---- API model providers ---------------------------------------- */
+
+  ctx.route("/vm/providers", (req, res) => {
+    if (req.method === "GET") {
+      return res.json({
+        presets: providers.PRESETS,
+        providers: providers.list(),
+        activeId: providers.state().activeId,
+        // Cline is a client, not a source of inference. Saying so here is
+        // kinder than letting someone hunt for a key that does not exist.
+        note:
+          "Cline is a client, not a provider: point it at the same OpenRouter key and it uses the model you pick here.",
+      });
+    }
+    if (req.method !== "POST") return res.status(405).json({ error: "use POST" });
+
+    const r = providers.add(req.body ?? {});
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  });
+
+  ctx.route("/vm/providers/:id", (req, res) => {
+    const id = req.params.id;
+    if (req.method === "DELETE") {
+      const r = providers.remove(id);
+      return res.status(r.ok ? 200 : 404).json(r);
+    }
+    if (req.method === "PUT" || req.method === "PATCH") {
+      if (req.body?.model) return res.json(providers.setModel(id, req.body.model));
+      if (req.body?.activate) return res.json(providers.activate(id));
+      return res.status(400).json({ error: "send { model } or { activate: true }" });
+    }
+    res.status(405).json({ error: "use PUT or DELETE" });
+  });
+
+  ctx.route("/vm/providers/:id/test", async (req, res) => {
+    const r = await providers.test(req.params.id === "active" ? null : req.params.id);
+    res.status(r.ok ? 200 : 502).json(r);
+  });
+
+  // The terminal owns which machines exist; the platform owns where the next
+  // build goes. This publishes one to the other.
+  mountConnectRouter(ctx, vm);
 
   /* ---- connections ------------------------------------------------ */
 

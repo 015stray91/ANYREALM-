@@ -27,9 +27,11 @@ import {
   Wrench,
   Settings,
   Boxes,
+  Package,
   Radio,
   GitFork,
-  Upload
+  Upload,
+  Server
 } from 'lucide-react';
 import AospArchitect from './components/AospArchitect';
 import ModuleVectorSettingsPanel from './components/ModuleVectorSettingsPanel';
@@ -49,6 +51,10 @@ import PeoplesImporter from './components/PeoplesImporter';
 import AndroidImageKitchen from './components/AndroidImageKitchen';
 import ExperimentalLaboratory from './components/ExperimentalLaboratory';
 import ToolchainExtensionHub from './components/ToolchainExtensionHub';
+import CoreLibrary from './components/CoreLibrary';
+import PluginHost, { usePlugins } from './components/PluginHost';
+import PartitionInspector from './components/PartitionInspector';
+import CompileRouter from './components/CompileRouter';
 import { DeviceMetadata, AospComponent, GeneratedFile } from './types';
 
 // ... (existing imports)
@@ -163,7 +169,10 @@ export default function App() {
     });
   };
 
-  const [activeTab, setActiveTab] = useState<'architect' | 'fuser' | 'code' | 'super' | 'automation' | 'interpreter' | 'iso_fs' | 'firmware' | 'peoples' | 'aik' | 'module_vector' | 'experimental' | 'toolchains' | 'sources' | 'compose' | 'firmware_upload' | 'chain'>('architect');
+    // Plugin tabs are addressed as `plugin:<id>`; keeping the active tab a plain
+  // string means a new addon needs no edit to this union.
+  const [activeTab, setActiveTab] = useState<string>('architect');
+  const { plugins } = usePlugins();
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [isRefactoringCode, setIsRefactoringCode] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
@@ -350,6 +359,64 @@ export default function App() {
               <Layers className="w-3.5 h-3.5" />
               Architect Studio
             </button>
+
+            <button
+              onClick={() => setActiveTab('library')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'library'
+                  ? 'bg-gradient-to-r from-fuchsia-500 to-pink-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-core-library"
+            >
+              <Package className="w-3.5 h-3.5" />
+              Core Library
+            </button>
+
+            <button
+              onClick={() => setActiveTab('partitions')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'partitions'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-partitions"
+            >
+              <HardDrive className="w-3.5 h-3.5" />
+              Partitions
+            </button>
+
+            <button
+              onClick={() => setActiveTab('routing')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === 'routing'
+                  ? 'bg-gradient-to-r from-cyan-500 to-teal-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              id="tab-compile-router"
+            >
+              <Server className="w-3.5 h-3.5" />
+              Compile Router
+            </button>
+
+            {plugins.map((pl) => (
+              <button
+                key={pl.id}
+                onClick={() => setActiveTab(`plugin:${pl.id}`)}
+                title={pl.description}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                  activeTab === `plugin:${pl.id}`
+                    ? 'bg-gradient-to-r from-slate-500 to-slate-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                id={`tab-plugin-${pl.id}`}
+              >
+                {pl.id === 'module-lab' ? <Cpu className="w-3.5 h-3.5" /> : <Boxes className="w-3.5 h-3.5" />}
+                {pl.name}
+                {!pl.healthy && <span className="text-rose-400 text-[9px]">!</span>}
+                {pl.healthy && pl.missing.length > 0 && <span className="text-amber-400 text-[9px]">!</span>}
+              </button>
+            ))}
 
             <button
               onClick={() => setActiveTab('sources')}
@@ -606,6 +673,22 @@ export default function App() {
 
           {activeTab === 'sources' && (
             <SourceSync />
+          )}
+
+          {activeTab === 'library' && (
+            <CoreLibrary />
+          )}
+
+          {activeTab === 'partitions' && (
+            <PartitionInspector />
+          )}
+
+          {activeTab === 'routing' && (
+            <CompileRouter />
+          )}
+
+          {activeTab.startsWith('plugin:') && (
+            <PluginHost pluginId={activeTab.slice('plugin:'.length)} />
           )}
           {activeTab === 'compose' && (
             <ComposeDispatch />

@@ -1,0 +1,17 @@
+{
+  "id": "recovery-lab",
+  "name": "Recovery Lab",
+  "version": "1.0.0",
+  "description": "Compose and cross-port custom recoveries. Builds GearLock- and OrangeFox-style trees from a device profile, checks that the upstream source layout matches what the build recipe expects, and produces the port patches needed to move one device's recovery environment to another device tree.",
+  "category": "plugins",
+  "requires": ["git", "make"],
+  "panels": [
+    {
+      "id": "recovery-lab.panel",
+      "title": "Recovery Lab",
+      "subtitle": "GearLock / OrangeFox compose, env cross-port, upstream source matching",
+      "icon": "HardDrive",
+      "endpoint": "/catalog"
+    }
+  ]
+}

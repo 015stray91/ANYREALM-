@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import dotenv from "dotenv";
 import { dataFile, dataDirs, allowedRoots as allowedDataRoots, insideAllowed } from "./paths";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -52,6 +53,39 @@ import {
   resolveStylesheet, emitQmlTheme, bindComponents,
 } from "./glacier-qml-bridge";
 import { parseBootImage } from "./firmware-dissect";
+import { FORMATS, probeTools, identify, inspectFile } from "./formats";
+import {
+  indexDirectory,
+  readLibrary,
+  writeLibrary,
+  slotCatalog,
+  assignmentMatrix,
+  resolveSlot,
+} from "./library";
+import { loadPlugins, pluginSummaries, pluginSnippet, dispatchPluginWs } from "./plugins/runtime";
+import { catalog as partitionCatalog, parseDumpName, groupSnapshots } from "./partitions";
+import { buildPatch, kpmRecipe } from "./patchgen";
+import {
+  readState as readRouting,
+  writeState as writeRouting,
+  probeRemote,
+  probeActions,
+  probeLocal,
+  routeWarnings,
+  activeEndpoint,
+  endpointProblem,
+  endpointSummary,
+  effectiveRoute,
+  temporaryActive,
+} from "./compile-routing";
+import {
+  DEFAULT_CONFIG as LIVEPATCH_CONFIG,
+  REQUIRED_CONFIG as LIVEPATCH_REQUIRED,
+  checkKernelConfig,
+  checkPayload,
+  bootUnits,
+  fuseFragment,
+} from "./livepatch";
 import { unpackLayers } from "./container-unpack";
 import {
   validateTarget,
@@ -1279,7 +1313,7 @@ app.post("/api/firmware/dissect", async (req, res) => {
       // Persist the image so a later build step can actually use it. Kept in
       // /tmp on purpose: these are large and disposable.
       try {
-        const dir = path.join(require("os").tmpdir(), "anyrealm-firmware", isoTimestamp());
+        const dir = path.join(os.tmpdir(), "anyrealm-firmware", isoTimestamp());
         fs.mkdirSync(dir, { recursive: true });
         const safe = path.basename(name).replace(/[^A-Za-z0-9._-]/g, "_");
         const saved = path.join(dir, safe);
@@ -2246,7 +2280,12 @@ const httpServer = http.createServer(app);
 // WebSocket Server for dynamic hardware telemetry and remote compilation
 const wss = new WebSocketServer({ server: httpServer });
 
-wss.on("connection", (ws: WebSocket) => {
+wss.on("connection", (ws: WebSocket, req: any) => {
+  // A plugin that wants a stream (the terminal is the first) claims its own path.
+  // Handled before the core dispatcher, which expects its own JSON action
+  // envelope and would otherwise treat raw keystrokes as a malformed command.
+  if (dispatchPluginWs(ws, req)) return;
+
   console.log("[WS] Client developer session connected to Kiosity Core.");
 
   ws.on("message", async (message: string) => {
@@ -2471,8 +2510,694 @@ wss.on("connection", (ws: WebSocket) => {
   });
 });
 
+
+// ---- format registry ------------------------------------------------------
+// The list itself lives in formats.ts. This only reports it, plus whether each
+// format's tools exist here, because "we support tar.zst" is a lie if zstd is
+// not installed and the UI has to be able to say so.
+
+app.get("/api/formats", (_req, res) => {
+  res.json({
+    formats: FORMATS.map((f) => ({
+      id: f.id,
+      family: f.family,
+      label: f.label,
+      extensions: f.extensions,
+      magic: f.magic,
+      tools: f.tools,
+      canInspect: !!f.inspect,
+      canUnpack: !!f.unpack,
+      canRepack: !!f.repack,
+      repackNote: f.repackNote ?? null,
+      note: f.note ?? null,
+    })),
+    tools: probeTools(),
+  });
+});
+
+// Which tool is missing for which formats, in one line each. This is the answer
+// to "why did my 7z fail" before the user has to read a stack trace.
+app.get("/api/formats/tools", (_req, res) => {
+  const tools = probeTools();
+  res.json({
+    tools,
+    missing: tools.filter((t) => !t.path),
+    allPresent: tools.every((t) => !!t.path),
+  });
+});
+
+app.post("/api/formats/inspect", async (req, res) => {
+  const { files } = req.body ?? {};
+  if (!Array.isArray(files) || files.length === 0) {
+    return res.status(400).json({ error: "files[] is required, each { name, dataBase64 }" });
+  }
+  try {
+    const dir = path.join(os.tmpdir(), "anyrealm-inspect", isoTimestamp());
+    fs.mkdirSync(dir, { recursive: true });
+    const results: any[] = [];
+    for (const f of files) {
+      const name = String(f?.name ?? "payload");
+      const b64 = String(f?.dataBase64 ?? "");
+      if (!b64) {
+        results.push({ name, ok: false, error: "no data" });
+        continue;
+      }
+      const buf = Buffer.from(b64, "base64");
+      const detected = identify(name, buf);
+      if (!detected) {
+        results.push({ name, ok: false, error: "format not recognised from magic or extension" });
+        continue;
+      }
+      const saved = path.join(dir, path.basename(name).replace(/[^A-Za-z0-9._-]/g, "_"));
+      fs.writeFileSync(saved, buf);
+      const inspected = await inspectFile(saved, detected);
+      results.push({ name, bytes: buf.length, savedPath: saved, ...inspected });
+    }
+    res.json({ results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- local core library ---------------------------------------------------
+// Index a directory once, then let every panel ask for "the kernel tree" rather
+// than asking the user to paste a path again. Classification is structural: see
+// library.ts.
+
+function libraryRoot(): string {
+  const d = dataFile("library");
+  fs.mkdirSync(d, { recursive: true });
+  return d;
+}
+
+app.get("/api/library", (_req, res) => {
+  const lib = readLibrary(libraryRoot());
+  res.json({
+    entries: lib.entries,
+    slots: slotCatalog(),
+    assignments: assignmentMatrix(lib),
+  });
+});
+
+app.post("/api/library/index", (req, res) => {
+  const { dir, label, slots } = req.body ?? {};
+  if (!dir || typeof dir !== "string") return res.status(400).json({ error: "dir is required" });
+  try {
+    const lib = readLibrary(libraryRoot());
+    const entry = indexDirectory(dir, label);
+    if (Array.isArray(slots) && slots.length) entry.slots = slots.map(String) as any;
+    else if (Array.isArray(slots) && slots.length === 0) entry.slots = entry.slots;
+    const existing = lib.entries.findIndex((e) => e.path === entry.path);
+    if (existing >= 0) lib.entries[existing] = entry;
+    else lib.entries.push(entry);
+    writeLibrary(libraryRoot(), lib);
+    res.json({ ok: true, entry, library: lib.entries.length });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post("/api/library/assign", (req, res) => {
+  const { entryId, slots } = req.body ?? {};
+  if (!entryId) return res.status(400).json({ error: "entryId is required" });
+  if (!Array.isArray(slots)) return res.status(400).json({ error: "slots[] is required (may be empty)" });
+  const lib = readLibrary(libraryRoot());
+  const entry = lib.entries.find((e) => e.id === entryId);
+  if (!entry) return res.status(404).json({ error: `no library entry "${entryId}"` });
+  entry.slots = slots.map(String) as any;
+  writeLibrary(libraryRoot(), lib);
+  res.json({ ok: true, entry, assignments: assignmentMatrix(lib) });
+});
+
+app.delete("/api/library/:id", (req, res) => {
+  const lib = readLibrary(libraryRoot());
+  const before = lib.entries.length;
+  lib.entries = lib.entries.filter((e) => e.id !== req.params.id);
+  writeLibrary(libraryRoot(), lib);
+  res.json({ ok: true, removed: before - lib.entries.length, assignments: assignmentMatrix(lib) });
+});
+
+// What a slot resolves to right now, so a panel can prefill instead of asking.
+app.get("/api/library/resolve/:slot", (req, res) => {
+  const lib = readLibrary(libraryRoot());
+  const entry = resolveSlot(lib, req.params.slot as any);
+  if (!entry) return res.status(404).json({ error: `nothing assigned to ${req.params.slot}` });
+  res.json({ slot: req.params.slot, entry });
+});
+
+// ---- plugins --------------------------------------------------------------
+app.get("/api/plugins", (_req, res) => {
+  res.json({ plugins: pluginSummaries() });
+});
+
+// A plugin's workflow step, for a composed build. Returns 404 when the plugin
+// has no snippet rather than an empty success, so the UI can hide the button.
+app.post("/api/plugins/:id/workflow", (req, res) => {
+  const snippet = pluginSnippet(req.params.id, req.body ?? {});
+  if (snippet === null) return res.status(404).json({ error: `plugin "${req.params.id}" has no workflow snippet` });
+  res.json({ id: req.params.id, snippet });
+});
+
+
+// ---- partition catalog ----------------------------------------------------
+// A real device dump is a snapshot of every partition, and most of them are
+// opaque signed blobs that must not be repacked. This reports, per file, what it
+// is and what may be done to it.
+
+app.get("/api/partitions", (_req, res) => {
+  res.json(partitionCatalog());
+});
+
+app.get("/api/partitions/tools", (_req, res) => {
+  const need = ["file", "unpackbootimg", "mkbootimg", "mkdtimg", "lpdump", "lpunpack", "lpmake", "avbtool", "debugfs", "tar", "7z", "unzip"];
+  const dirs = (process.env.PATH ?? "").split(":").filter(Boolean);
+  const present = (tool: string) =>
+    dirs.some((d) => {
+      try {
+        return fs.existsSync(path.join(d, tool));
+      } catch {
+        return false;
+      }
+    });
+  const tools = need.map((t) => ({ tool: t, path: present(t) ? t : null }));
+  res.json({ tools, missing: tools.filter((t) => !t.path).map((t) => t.tool) });
+});
+
+app.post("/api/partitions/classify", (req, res) => {
+  const { names, listing } = req.body ?? {};
+  let files: string[] = [];
+
+  if (Array.isArray(names)) {
+    files = names.map(String);
+  } else if (typeof listing === "string") {
+    // Accept `ls`, `ls -la`, and `find` output. A bare word is a filename; a line
+    // with columns is split on whitespace and the basename is taken last, which
+    // also handles `./sub/file` and `/abs/path/file`.
+    files = listing
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("total") && !l.startsWith("d"))
+      .map((l) => {
+        const parts = l.split(/\s+/);
+        return parts[parts.length - 1];
+      })
+      .filter((l) => l && !l.startsWith("."))
+      .map((l) => l.split("/").pop() || l);
+  } else {
+    return res.status(400).json({ error: "send { names: string[] } or { listing: string }" });
+  }
+
+  if (files.length === 0) return res.status(400).json({ error: "no file names found" });
+  if (files.length > 4000) return res.status(413).json({ error: "at most 4000 names" });
+
+  const parsed = files.map((f) => parseDumpName(f));
+  const snapshots = groupSnapshots(files);
+
+  res.json({
+    files: parsed.length,
+    recognised: parsed.filter((p) => p.partition).length,
+    unrecognised: parsed.filter((p) => !p.partition).map((p) => p.fileName),
+    snapshots,
+    results: parsed,
+  });
+});
+
+
+// ---- patch / diff generation ---------------------------------------------
+// A KPM needs a git-style patch, not a bare diff: its build applies the series
+// with -p1 against a kernel tree, and a diff of two absolute paths loses that.
+
+app.post("/api/patch/build", async (req, res) => {
+  const { original, modified, style = "patch", contextLines = 3, stripLevel = 1 } = req.body ?? {};
+  if (!original || !modified) return res.status(400).json({ error: "original and modified paths are required" });
+  if (style !== "diff" && style !== "patch") return res.status(400).json({ error: 'style must be "diff" or "patch"' });
+  try {
+    const result = await buildPatch({ original, modified, style, contextLines, stripLevel });
+    res.status(result.error ? 400 : 200).json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/patch/recipe", (req, res) => {
+  const { moduleName = "anyrealm_kpm", kernelVersion = "unknown", patchNames = [] } = req.body ?? {};
+  if (!Array.isArray(patchNames)) return res.status(400).json({ error: "patchNames[] is required" });
+  res.json({
+    ok: true,
+    files: kpmRecipe({ moduleName: String(moduleName), kernelVersion: String(kernelVersion), patchNames: patchNames.map(String) }),
+  });
+});
+
+// ---- livepatch ------------------------------------------------------------
+// The distinction that matters: this kernel already has CONFIG_LIVEPATCH=y, so a
+// payload is optional. A kpatch.ko that does not compile must not block an ISO.
+
+app.get("/api/livepatch", (_req, res) => {
+  res.json({
+    config: LIVEPATCH_CONFIG,
+    requiredConfig: LIVEPATCH_REQUIRED,
+    units: bootUnits(LIVEPATCH_CONFIG),
+    note:
+      "CONFIG_LIVEPATCH is built into the desktop kernel, so no module is required. " +
+      "Payloads are only needed to patch a function without rebooting.",
+  });
+});
+
+app.post("/api/livepatch/check", (req, res) => {
+  const { configText = "", payloadPath, systemMapPath, kernelVermagic } = req.body ?? {};
+  const kernel = typeof configText === "string" && configText.length ? checkKernelConfig(configText) : null;
+  let payload = null;
+  if (payloadPath) {
+    try {
+      payload = checkPayload(String(payloadPath), {
+        kernelVermagic: kernelVermagic ? String(kernelVermagic) : undefined,
+        systemMapPath: systemMapPath ? String(systemMapPath) : undefined,
+      });
+    } catch (e: any) {
+      payload = { error: e.message };
+    }
+  }
+  res.json({ kernel, payload });
+});
+
+app.get("/api/livepatch/fragment", (_req, res) => {
+  res.type("text/plain").send(fuseFragment(LIVEPATCH_CONFIG));
+});
+
+
+// ---- compile routing ------------------------------------------------------
+// Where a build runs is a decision, not a setting buried in a panel. The three
+// targets are genuinely different sites with different failure modes, so the
+// route and the runner are stored separately: switching site is not a rebuild.
+
+function routingRoot(): string {
+  const d = dataFile("routing");
+  fs.mkdirSync(d, { recursive: true });
+  return d;
+}
+
+app.get("/api/routing", (_req, res) => {
+  const state = readRouting(routingRoot());
+  const effective = effectiveRoute(state);
+  res.json({
+    ...state,
+    // Each remote carries its active address, so the UI never has to guess.
+    runners: state.runners.map((r) => ({
+      ...r,
+      activeEndpoint: activeEndpoint(r),
+      address: r.kind === "remote" ? endpointSummary(r) : r.host,
+    })),
+    effective,
+    temporary: temporaryActive(state.temporary) ? state.temporary : null,
+    // Warnings describe the route that will actually be used, not the standing one.
+    warnings: routeWarnings(effective, state.runners, state.probes),
+    targets: [
+      {
+        id: "local",
+        label: "Local only",
+        summary: "Build on this machine.",
+        detail:
+          "No queue and no network. A kernel build saturates every core, the fans stay loud for an hour, " +
+          "and the output stays on this disk — which is also the only copy.",
+        bestFor: "quick iteration, module-only builds, when the VM is down",
+        risks: ["the machine is unusable for other work while it runs", "the image is local-only until copied out"],
+      },
+      {
+        id: "actions",
+        label: "GitHub Actions",
+        summary: "Dispatch the existing workflow to a self-hosted runner.",
+        detail:
+          "Reproducible and logged. The job waits until a runner carrying the right labels is free, " +
+          "and the artifact comes back through the Actions storage.",
+        bestFor: "a build you want a permanent log and artifact for",
+        risks: ["a queued job can wait a long time if no runner matches", "labels are the only thing keeping it off the wrong machine"],
+      },
+      {
+        id: "remote",
+        label: "Remote instance / VM / VPS",
+        summary: "Build over SSH on a box you control.",
+        detail:
+          "Same isolation as Actions without the queue. The artifact stays on the remote host, so fetching it " +
+          "is a separate step you have to remember.",
+        bestFor: "the Azure VM, a VPS, or an instance that is already provisioned",
+        risks: ["an unreachable host fails at dispatch, not at the end", "disk on the remote is usually the binding constraint"],
+      },
+    ],
+  });
+});
+
+// ---- temporary route ------------------------------------------------------
+// "Send builds through this VM for the next N hours." It stores the route it
+// replaces, so expiry restores the standing decision rather than leaving the
+// builder pointed at a machine someone booted for an afternoon.
+
+app.post("/api/routing/temporary", (req, res) => {
+  const { target, runnerId, minutes, note } = req.body ?? {};
+  if (!["local", "actions", "remote"].includes(String(target))) {
+    return res.status(400).json({ error: 'target must be "local", "actions" or "remote"' });
+  }
+  const mins = Number(minutes ?? 0);
+  if (!Number.isFinite(mins) || mins <= 0) {
+    return res.status(400).json({ error: "minutes must be a positive number — a temporary route needs a deadline" });
+  }
+  if (mins > 60 * 24 * 14) {
+    return res.status(400).json({ error: "minutes is capped at 14 days; beyond that it is a standing route" });
+  }
+
+  const state = readRouting(routingRoot());
+  if (runnerId) {
+    const runner = state.runners.find((r) => r.id === runnerId);
+    if (!runner) return res.status(404).json({ error: `no runner "${runnerId}"` });
+    if (runner.kind !== target) {
+      return res.status(400).json({ error: `runner "${runnerId}" is a ${runner.kind} runner, but the target is ${target}` });
+    }
+    if (runner.kind === "remote" && !activeEndpoint(runner)) {
+      return res.status(400).json({ error: `"${runnerId}" has no address to build through — add one first` });
+    }
+  }
+
+  const expiresAt = new Date(Date.now() + mins * 60_000).toISOString();
+  state.temporary = {
+    route: {
+      target: String(target) as any,
+      runnerId: runnerId ? String(runnerId) : null,
+      reason: note ? String(note) : `temporary route for ${mins} min`,
+      updatedAt: new Date().toISOString(),
+    },
+    expiresAt,
+    // Capture the standing route now, not at expiry: the standing route could
+    // itself be edited while the temporary one is in force, and the fallback
+    // should be what it was when the temporary route was created.
+    fallback: { ...state.route },
+    note: note ? String(note) : undefined,
+  };
+  writeRouting(routingRoot(), state);
+  res.json({
+    ok: true,
+    temporary: state.temporary,
+    effective: effectiveRoute(state),
+    warnings: routeWarnings(effectiveRoute(state), state.runners, state.probes),
+  });
+});
+
+app.delete("/api/routing/temporary", (_req, res) => {
+  const state = readRouting(routingRoot());
+  const had = !!state.temporary;
+  state.temporary = null;
+  writeRouting(routingRoot(), state);
+  res.json({ ok: true, cleared: had, effective: effectiveRoute(state), route: state.route });
+});
+
+app.post("/api/routing/temporary/promote", (_req, res) => {
+  // Make the temporary route permanent: useful when the "temporary" VM turns out
+  // to be the build box from now on.
+  const state = readRouting(routingRoot());
+  if (!state.temporary) return res.status(400).json({ error: "there is no temporary route to promote" });
+  const { reason, updatedAt, ...rest } = state.temporary.route;
+  state.route = { ...rest, reason: reason ?? "promoted from a temporary route", updatedAt: new Date().toISOString() };
+  state.temporary = null;
+  writeRouting(routingRoot(), state);
+  res.json({ ok: true, route: state.route, effective: effectiveRoute(state) });
+});
+
+app.post("/api/routing/route", (req, res) => {
+  const { target, runnerId, structure, reason } = req.body ?? {};
+  if (!["local", "actions", "remote"].includes(String(target))) {
+    return res.status(400).json({ error: 'target must be "local", "actions" or "remote"' });
+  }
+  const state = readRouting(routingRoot());
+  if (runnerId) {
+    const runner = state.runners.find((r) => r.id === runnerId);
+    if (!runner) return res.status(404).json({ error: `no runner "${runnerId}"` });
+    if (runner.kind !== target) {
+      return res.status(400).json({
+        error: `runner "${runnerId}" is a ${runner.kind} runner, but the route target is ${target}`,
+      });
+    }
+  }
+  state.route = {
+    target: String(target) as any,
+    runnerId: runnerId ? String(runnerId) : null,
+    structure: structure ? String(structure) : state.route.structure,
+    reason: reason ? String(reason) : undefined,
+    updatedAt: new Date().toISOString(),
+  };
+  writeRouting(routingRoot(), state);
+  res.json({
+    ok: true,
+    route: state.route,
+    effective: effectiveRoute(state),
+    // If a temporary route is in force, changing the standing route has no
+    // immediate effect. Say so rather than letting the user think it did.
+    note: temporaryActive(state.temporary)
+      ? `a temporary route is in force until ${state.temporary!.expiresAt}; this change applies after it expires`
+      : undefined,
+    warnings: routeWarnings(effectiveRoute(state), state.runners, state.probes),
+  });
+});
+
+app.post("/api/routing/runners", (req, res) => {
+  const body = req.body ?? {};
+  if (!body.id && !body.label) return res.status(400).json({ error: "id or label is required" });
+  const id = String(body.id ?? slugify(String(body.label)));
+  const kind = String(body.kind ?? "remote");
+  if (!["actions", "remote"].includes(kind)) {
+    return res.status(400).json({ error: 'kind must be "actions" or "remote" (local is not a runner)' });
+  }
+
+  const runner: any = {
+    id,
+    label: String(body.label ?? id),
+    kind,
+    workDir: String(body.workDir ?? ""),
+    notes: body.notes ? String(body.notes) : undefined,
+  };
+
+  if (kind === "remote") {
+    // Build the pool. An address that cannot be used is refused at creation,
+    // not at dispatch -- a bad endpoint that only fails on a 4-hour build is the
+    // whole reason this tab exists.
+    const incoming: any[] = Array.isArray(body.endpoints) ? body.endpoints : [];
+    const pool: any[] = [];
+    for (const raw of incoming) {
+      const ep: any = {
+        id: String(raw.id ?? slugify(String(raw.label ?? "ep") + "-" + String(raw.host ?? ""))),
+        label: String(raw.label ?? "endpoint"),
+        user: String(raw.user ?? "").trim(),
+        host: String(raw.host ?? "").trim(),
+        port: raw.port === undefined || raw.port === "" ? 22 : Number(raw.port),
+        identity: raw.identity ? String(raw.identity) : undefined,
+      };
+      const problem = endpointProblem(ep);
+      if (problem) return res.status(400).json({ error: `${ep.label}: ${problem}` });
+      if (pool.some((p) => p.id === ep.id)) {
+        return res.status(400).json({ error: `duplicate endpoint id "${ep.id}" -- give each address its own label` });
+      }
+      pool.push(ep);
+    }
+    runner.endpoints = pool;
+    runner.host = pool[0] ? `${pool[0].user}@${pool[0].host}` : "";
+    if (body.cores) runner.cores = Number(body.cores);
+    if (body.ramGb) runner.ramGb = Number(body.ramGb);
+
+    // Keep the previous active address if it still exists; otherwise first in pool.
+    const state = readRouting(routingRoot());
+    const prev = state.runners.find((r) => r.id === id);
+    const wanted = body.endpointId ?? prev?.endpointId ?? null;
+    runner.endpointId = pool.some((p) => p.id === wanted) ? wanted : pool[0]?.id ?? null;
+  } else {
+    runner.host = String(body.host ?? "");
+    runner.labels = Array.isArray(body.labels)
+      ? body.labels.map(String)
+      : String(body.labels ?? "").split(/[,\s]+/).filter(Boolean);
+    if (!/^[^/]+\/[^/]+$/.test(runner.host)) {
+      return res.status(400).json({ error: "actions host must be owner/repo" });
+    }
+  }
+
+  const state = readRouting(routingRoot());
+  const i = state.runners.findIndex((r) => r.id === id);
+  if (i >= 0) state.runners[i] = runner;
+  else state.runners.push(runner);
+  writeRouting(routingRoot(), state);
+  res.json({ ok: true, runner, runners: state.runners });
+});
+
+// ---- endpoints: the swappable address pool for a remote -------------------
+// This is the modular part. Swapping the address a build goes through is a
+// one-field change here; the runner, the route and the history stay put.
+
+app.get("/api/routing/runners/:id/endpoints", (req, res) => {
+  const state = readRouting(routingRoot());
+  const runner = state.runners.find((r) => r.id === req.params.id);
+  if (!runner) return res.status(404).json({ error: `no runner "${req.params.id}"` });
+  if (runner.kind !== "remote") return res.status(400).json({ error: `"${runner.id}" is a ${runner.kind} runner, not remote` });
+  res.json({ endpoints: runner.endpoints ?? [], endpointId: runner.endpointId ?? null });
+});
+
+app.post("/api/routing/runners/:id/endpoints", (req, res) => {
+  const state = readRouting(routingRoot());
+  const runner = state.runners.find((r) => r.id === req.params.id);
+  if (!runner) return res.status(404).json({ error: `no runner "${req.params.id}"` });
+  if (runner.kind !== "remote") return res.status(400).json({ error: `"${runner.id}" is a ${runner.kind} runner, not remote` });
+
+  const body = req.body ?? {};
+  const ep: any = {
+    id: String(body.id ?? slugify(String(body.label ?? "endpoint"))),
+    label: String(body.label ?? "endpoint"),
+    user: String(body.user ?? "").trim(),
+    host: String(body.host ?? "").trim(),
+    port: body.port === undefined || body.port === "" ? 22 : Number(body.port),
+    identity: body.identity ? String(body.identity) : undefined,
+  };
+  const problem = endpointProblem(ep);
+  if (problem) return res.status(400).json({ error: problem });
+
+  runner.endpoints = runner.endpoints ?? [];
+  const i = runner.endpoints.findIndex((e) => e.id === ep.id);
+  if (i >= 0) runner.endpoints[i] = { ...runner.endpoints[i], ...ep, id: runner.endpoints[i].id };
+  else runner.endpoints.push(ep);
+
+  // The first address added to an empty pool becomes active: otherwise a runner
+  // would look configured with nothing to build through.
+  if (!runner.endpointId) runner.endpointId = ep.id;
+  runner.host = endpointSummary(runner).replace(/:\d+$/, "");
+
+  writeRouting(routingRoot(), state);
+  res.json({ ok: true, endpoints: runner.endpoints, endpointId: runner.endpointId, runners: state.runners });
+});
+
+app.delete("/api/routing/runners/:id/endpoints/:endpointId", (req, res) => {
+  const state = readRouting(routingRoot());
+  const runner = state.runners.find((r) => r.id === req.params.id);
+  if (!runner) return res.status(404).json({ error: `no runner "${req.params.id}"` });
+  const pool = runner.endpoints ?? [];
+  const before = pool.length;
+  runner.endpoints = pool.filter((e) => e.id !== req.params.endpointId);
+  if (!runner.endpoints.length) {
+    return res.status(400).json({
+      error: "this is the last endpoint -- removing it would leave the remote with no address. Add another first.",
+    });
+  }
+  if (runner.endpointId === req.params.endpointId) {
+    runner.endpointId = runner.endpoints[0].id;
+  }
+  writeRouting(routingRoot(), state);
+  res.json({ ok: true, removed: before - runner.endpoints.length, endpoints: runner.endpoints, endpointId: runner.endpointId });
+});
+
+// Activating is separate from editing: swapping the address you build through
+// should not require re-entering it.
+app.post("/api/routing/runners/:id/endpoints/activate", (req, res) => {
+  const { endpointId } = req.body ?? {};
+  const state = readRouting(routingRoot());
+  const runner = state.runners.find((r) => r.id === req.params.id);
+  if (!runner) return res.status(404).json({ error: `no runner "${req.params.id}"` });
+  const ep = (runner.endpoints ?? []).find((e) => e.id === endpointId);
+  if (!ep) return res.status(404).json({ error: `no endpoint "${endpointId}" on ${runner.id}` });
+  runner.endpointId = ep.id;
+  runner.host = `${ep.user}@${ep.host}`;
+  writeRouting(routingRoot(), state);
+  res.json({ ok: true, runner, runners: state.runners });
+});
+
+app.delete("/api/routing/runners/:id", (req, res) => {
+  const state = readRouting(routingRoot());
+  const before = state.runners.length;
+  state.runners = state.runners.filter((r) => r.id !== req.params.id);
+  if (state.route.runnerId === req.params.id) {
+    // Removing the assigned runner must not leave a route pointing at nothing.
+    state.route = { target: "local", runnerId: null, structure: state.route.structure, reason: "runner removed" };
+  }
+  writeRouting(routingRoot(), state);
+  res.json({ ok: true, removed: before - state.runners.length, runners: state.runners, route: state.route });
+});
+
+/**
+ * Probe. Three shapes:
+ *   {}                      local + every runner (each address of each remote)
+ *   { id }                  one runner -- every address in its pool
+ *   { id, endpointId }      one address
+ * Probing the whole pool is the point: on a given network exactly one address
+ * usually works, and seeing all of them tells you which one to activate.
+ */
+app.post("/api/routing/probe", async (req, res) => {
+  const { id, endpointId } = req.body ?? {};
+  const state = readRouting(routingRoot());
+  try {
+    // Every probe result is remembered. A known-dead address should warn on the
+    // next dispatch instead of being rediscovered by a failed build.
+    state.probes = state.probes ?? {};
+    const remember = (p: any) => {
+      if (p.endpointId === null) return p;
+      state.probes![`${p.runnerId}::${p.endpointId}`] = {
+        reachable: p.reachable,
+        latencyMs: p.latencyMs,
+        at: new Date().toISOString(),
+        error: p.error,
+      };
+      return p;
+    };
+
+    if (!id || id === "local") {
+      const probes = [probeLocal()];
+      for (const r of state.runners) {
+        if (r.kind === "remote") {
+          for (const ep of r.endpoints ?? []) probes.push(remember(await probeRemote(r, ep)));
+        } else {
+          probes.push(await probeActions(r));
+        }
+      }
+      writeRouting(routingRoot(), state);
+      return res.json({ probes, warnings: routeWarnings(state.route, state.runners, state.probes) });
+    }
+    const runner = state.runners.find((r) => r.id === id);
+    if (!runner) return res.status(404).json({ error: `no runner "${id}"` });
+
+    if (runner.kind !== "remote") return res.json({ probes: [await probeActions(runner)] });
+
+    const pool = runner.endpoints ?? [];
+    if (endpointId) {
+      const ep = pool.find((e) => e.id === endpointId);
+      if (!ep) return res.status(404).json({ error: `no endpoint "${endpointId}" on ${id}` });
+      const probe = remember(await probeRemote(runner, ep));
+      writeRouting(routingRoot(), state);
+      return res.json({ probes: [probe], warnings: routeWarnings(state.route, state.runners, state.probes) });
+    }
+    if (!pool.length) return res.json({ probes: [], note: "this remote has no endpoints yet" });
+    const probes = [];
+    for (const ep of pool) probes.push(remember(await probeRemote(runner, ep)));
+    writeRouting(routingRoot(), state);
+    return res.json({ probes, warnings: routeWarnings(state.route, state.runners, state.probes) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "runner";
+}
+
 // Initialize Vite middleware for development or Serve static files in production
 async function setupServer() {
+  // ORDER MATTERS, and getting it wrong is silent.
+  //
+  // Vite's dev middleware ends every unmatched request by returning index.html
+  // for the SPA. If it is registered before the plugins, a call to
+  // /api/plugins/<id>/catalog is "unmatched" until Vite sees it -- so the plugin
+  // route never runs and the panel receives a page of HTML instead of JSON. The
+  // symptom is a plugin that reports healthy and returns 200 while every one of
+  // its endpoints is unusable.
+  //
+  // Plugins therefore mount first, and Vite/static serving is the fallback.
+
+  // Plugins are mounted before the port opens: a request that arrives before a
+  // plugin has registered its routes gets a 404 and the panel looks broken.
+  const pluginRoot = path.join(process.cwd(), "plugins");
+  const loaded = await loadPlugins(app, pluginRoot);
+  const healthy = loaded.filter((p) => p.healthy).length;
+  console.log(`[plugins] ${healthy}/${loaded.length} addon(s) mounted from ${pluginRoot}`);
+
   if (process.env.NODE_ENV !== "production") {
     console.log("Setting up Vite server in development mode...");
     // Imported here, not at the top of the file. A static import becomes a

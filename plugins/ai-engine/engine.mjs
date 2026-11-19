@@ -233,11 +233,34 @@ function errorLines(text, max = 6) {
  * OpenAI's shape is used because it is the one most providers and gateways
  * speak; a vendor-specific SDK would pin the project to one of them.
  */
+/**
+ * Resolve which model, if any, will answer.
+ *
+ * Precedence, most specific first:
+ *
+ *   1. An API provider the user activated (OpenRouter, Anthropic, a gateway).
+ *      It was chosen explicitly, and it costs money per call — so it is not
+ *      quietly overridden by something else.
+ *   2. The VM tunnel. An activated API provider beats it because activating one
+ *      is a deliberate act; a tunnel merely being open is a state.
+ *   3. Environment variables, for a deployment wired by its operator.
+ *
+ * Each branch reports a different `source`, because "the assistant is not
+ * answering" has a different fix for each and a single "configured: false"
+ * would hide which one to check.
+ */
 export function providerStatus(runtime) {
-  // Precedence: a runtime provider (the VM tunnel the terminal owns) beats the
-  // environment. That is deliberate — if the user has wired a VM with a model on
-  // it, that is the thing they just set up, and an old env var should not
-  // silently win over it.
+  const api = runtime?.getApiProvider?.() ?? null;
+  if (api?.base && api?.key && api?.model) {
+    return {
+      configured: true,
+      source: api.source ?? "api",
+      model: api.model,
+      base: String(api.base).replace(/\/\/[^/]+/, "//<host>"),
+      howTo: null,
+    };
+  }
+
   const rt = runtime?.getProviderBase?.() ? runtime : null;
   const base = rt ? rt.getProviderBase() : process.env.ANYREALM_AI_BASE;
   const model = rt ? rt.getModelName?.() ?? "local-gguf" : process.env.ANYREALM_AI_MODEL;
@@ -249,11 +272,11 @@ export function providerStatus(runtime) {
     source: rt ? "vm-tunnel" : base ? "environment" : null,
     model: model ?? null,
     base: base ? base.replace(/\/\/[^/]+/, "//<host>") : null,
-    /** Says exactly how to enable it, since this is the one thing the user must do. */
+    /** Both ways of enabling it, since either is valid. */
     howTo:
       base && model && key
         ? null
-        : "open Settings in the terminal, add the VM that holds the model, then open the tunnel",
+        : "connect a model VM in Settings, or add an API key under Model providers",
   };
 }
 
@@ -269,12 +292,15 @@ Rules that matter:
 - When asked to compare yourself to a larger model, be honest: you are a focused assistant, not a frontier model.`;
 
 async function askProvider(question, context, history, runtime) {
+  const api = runtime?.getApiProvider?.() ?? null;
   const rt = runtime?.getProviderBase?.() ? runtime : null;
-  const { base, key, model } = {
-    base: rt ? rt.getProviderBase() : process.env.ANYREALM_AI_BASE,
-    key: rt ? "local" : process.env.ANYREALM_AI_KEY,
-    model: rt ? rt.getModelName?.() ?? "local-gguf" : process.env.ANYREALM_AI_MODEL,
-  };
+  const { base, key, model } = api?.base && api?.key && api?.model
+    ? { base: api.base, key: api.key, model: api.model }
+    : {
+        base: rt ? rt.getProviderBase() : process.env.ANYREALM_AI_BASE,
+        key: rt ? "local" : process.env.ANYREALM_AI_KEY,
+        model: rt ? rt.getModelName?.() ?? "local-gguf" : process.env.ANYREALM_AI_MODEL,
+      };
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     ...(history ?? []).slice(-8).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: String(m.content) })),

@@ -24,6 +24,7 @@
 import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
+import os from "os";
 
 export interface CatalogSource {
   id: string;
@@ -81,7 +82,7 @@ export interface SyncResult {
 }
 
 const MIRROR_ROOT =
-  process.env.ANYREALM_MIRROR_ROOT || path.join(require("os").tmpdir(), "anyrealm-sources");
+  process.env.ANYREALM_MIRROR_ROOT || path.join(os.tmpdir(), "anyrealm-sources");
 
 export function mirrorRoot(): string {
   return MIRROR_ROOT;

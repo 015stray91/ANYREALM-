@@ -1,0 +1,18 @@
+{
+  "id": "kio-fuse-lab",
+  "name": "KIO-FUSE Pipeline",
+  "version": "1.0.0",
+  "description": "Build, install and verify kio-fuse so KDE apps (dolphin, konsole, kate) can open files that live behind a KIO slave — smb://, sftp://, mtp://, archive:// — as plain paths on disk. Handles both source lines: Qt5/KF5 (kio-fuse 5.x) and Qt6/KF6 (6.x), which do not mix.",
+  "category": "plugins",
+  "kind": "pipeline",
+  "requires": ["cmake", "pkg-config", "gcc"],
+  "panels": [
+    {
+      "id": "kio-fuse-lab.panel",
+      "title": "KIO-FUSE Pipeline",
+      "subtitle": "Deps, build, install, mount, verify — for the Qt5 and Qt6 lines",
+      "icon": "Workflow",
+      "endpoint": "/pipeline"
+    }
+  ]
+}
