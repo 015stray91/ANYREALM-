@@ -326,6 +326,10 @@ export async function register(ctx) {
       host,
       user,
       kind: ["lan", "public", "tunnel"].includes(body.kind) ? body.kind : "public",
+      // Stored per endpoint: two machines rarely share a key, and a missing
+      // identity silently falls back to the global one, which then authenticates
+      // as the wrong user and looks like a network failure.
+      identity: body.identity ? String(body.identity).trim() : null,
       addedAt: Date.now(),
     };
     c.endpoints.push(ep);
