@@ -23,3 +23,9 @@ linux-unpacked/
 
 # Kotlin incremental-compile state from a local Gradle run. Rebuildable.
 .kotlin/
+
+# Runtime state written by the app itself. This is the user's configuration, not
+# source: committed state would overwrite a runner list or a chosen route on
+# checkout, and a routing file with a real host in it does not belong in git.
+routing/
+data/
