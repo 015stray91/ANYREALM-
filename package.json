@@ -68,7 +68,8 @@
       "sources-catalog.json",
       "toolchains-catalog.json",
       "metadata.json",
-      "package.json"
+      "package.json",
+      "plugins/**/*"
     ],
     "extraMetadata": {
       "main": "desktop/main.cjs"

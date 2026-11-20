@@ -3193,7 +3193,17 @@ async function setupServer() {
 
   // Plugins are mounted before the port opens: a request that arrives before a
   // plugin has registered its routes gets a 404 and the panel looks broken.
-  const pluginRoot = path.join(process.cwd(), "plugins");
+  // Same reasoning as dataFile(): the launcher sets cwd, but a packaged app must
+  // not depend on a launcher having set it correctly. A plugin root that resolves
+  // to nowhere loads zero addons and the app looks empty rather than broken, which
+  // is the harder failure to notice.
+  const pluginRoot = (() => {
+    for (const dir of dataDirs()) {
+      const p = path.join(dir, "plugins");
+      if (fs.existsSync(p)) return p;
+    }
+    return path.join(process.cwd(), "plugins");
+  })();
   const loaded = await loadPlugins(app, pluginRoot);
   const healthy = loaded.filter((p) => p.healthy).length;
   console.log(`[plugins] ${healthy}/${loaded.length} addon(s) mounted from ${pluginRoot}`);
