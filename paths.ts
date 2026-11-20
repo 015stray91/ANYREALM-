@@ -25,11 +25,18 @@ function here(): string {
   try {
     return path.dirname(fileURLToPath(import.meta.url));
   } catch {
-    // Bundled to CJS by esbuild: __dirname exists there.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return typeof (globalThis as any).__dirname === "string"
-      ? (globalThis as any).__dirname
-      : process.cwd();
+    // Bundled to CJS by esbuild. __dirname exists there as a real module-scoped
+    // binding, so it must be referenced directly: reading it off globalThis
+    // always yields undefined, because a CommonJS module's __dirname is not a
+    // global. That mistake made the packaged app resolve its data directory to
+    // the process's working directory, which for a launcher-started app is
+    // wherever the launcher happened to be -- /tmp in one test.
+    //
+    // `typeof` on an identifier that does not exist is safe and does not throw,
+    // so this is also correct when the module is ESM (dev, via tsx).
+    // eslint-disable-next-line no-undef
+    if (typeof __dirname === "string") return __dirname;
+    return process.cwd();
   }
 }
 
